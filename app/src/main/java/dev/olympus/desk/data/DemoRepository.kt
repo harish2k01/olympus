@@ -1,7 +1,7 @@
 package dev.olympus.desk.data
 
 data class NodeMetric(val name: String, val role: String, val cores: Int, val cpuPercent: Float, val memoryUsedGiB: Float, val memoryTotalGiB: Float, val available:Boolean=true, val ready:Boolean=true)
-data class LabEvent(val source: String, val title: String, val detail: String, val kind: String)
+data class LabEvent(val source: String, val title: String, val detail: String, val kind: String, val id:String="", val time:String="", val received:String="")
 
 /** Fixed illustrative data: never presented as a current cluster connection. */
 object DemoRepository {

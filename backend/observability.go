@@ -22,6 +22,7 @@ type responseLog struct {
 	http.ResponseWriter
 	status int
 }
+type requestIDKey struct{}
 
 func (w *responseLog) Unwrap() http.ResponseWriter { return w.ResponseWriter }
 
@@ -65,6 +66,7 @@ func accessLog(next http.Handler) http.Handler {
 		id := make([]byte, 12)
 		_, _ = rand.Read(id)
 		requestID := hex.EncodeToString(id)
+		r = r.WithContext(context.WithValue(r.Context(), requestIDKey{}, requestID))
 		w.Header().Set("X-Request-ID", requestID)
 		out := &responseLog{ResponseWriter: w}
 		start := time.Now()
@@ -167,12 +169,13 @@ func (s *server) run(ctx context.Context) {
 	defer tick.Stop()
 	for {
 		start := time.Now()
-		collect, cancel := context.WithTimeout(ctx, 14*time.Second)
+		collectionID := fmt.Sprintf("collect-%d", start.UnixNano())
+		collect, cancel := context.WithTimeout(context.WithValue(ctx, requestIDKey{}, collectionID), 14*time.Second)
 		snapshot := s.snapshot(collect)
 		events := s.feed(collect)
 		cancel()
 		s.live.publish(liveFrame{snapshot, events})
-		slog.Info("collection_complete", "duration_ms", time.Since(start).Milliseconds(), "nodes", len(snapshot.Nodes), "apps", len(snapshot.Apps), "events", len(events), "partial", len(snapshot.Errors) > 0)
+		slog.Info("collection_complete", "collection_id", collectionID, "duration_ms", time.Since(start).Milliseconds(), "nodes", len(snapshot.Nodes), "apps", len(snapshot.Apps), "events", len(events), "partial", len(snapshot.Errors) > 0)
 		// Coalesce bursts of Kubernetes events before querying shared upstreams again.
 		select {
 		case <-ctx.Done():

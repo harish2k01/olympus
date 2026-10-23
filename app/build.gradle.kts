@@ -6,8 +6,8 @@ android {
         applicationId = "dev.olympus.desk"
         minSdk = 29
         targetSdk = 37
-        versionCode = 2
-        versionName = "0.2.0-live"
+        versionCode = 3
+        versionName = "0.3.0"
     }
     buildFeatures { compose = true; buildConfig = true }
     compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }

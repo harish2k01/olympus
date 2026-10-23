@@ -8,7 +8,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
 	"log/slog"
 	"math"
 	"net/http"
@@ -105,6 +104,12 @@ func number(v vector) *float64 {
 	return &n
 }
 func (s *server) get(ctx context.Context, client *http.Client, address string, dst any, kube bool) error {
+	start := time.Now()
+	upstream := "prometheus"
+	if kube {
+		upstream = "kubernetes"
+	}
+	requestID, _ := ctx.Value(requestIDKey{}).(string)
 	r, e := http.NewRequestWithContext(ctx, "GET", address, nil)
 	if e != nil {
 		return e
@@ -114,12 +119,13 @@ func (s *server) get(ctx context.Context, client *http.Client, address string, d
 	}
 	resp, e := client.Do(r)
 	if e != nil {
-		slog.Warn("upstream_failed", "upstream", map[bool]string{true: "kubernetes", false: "prometheus"}[kube], "operation", strings.Split(r.URL.Path, "?")[0], "failure", "connection_or_timeout")
+		slog.Warn("upstream_failed", "request_id", requestID, "upstream", upstream, "failure", "connection_or_timeout", "duration_ms", time.Since(start).Milliseconds())
 		return e
 	}
 	defer resp.Body.Close()
+	slog.Debug("upstream_response", "request_id", requestID, "upstream", upstream, "status", resp.StatusCode, "duration_ms", time.Since(start).Milliseconds())
 	if resp.StatusCode != 200 {
-		slog.Warn("upstream_failed", "upstream", map[bool]string{true: "kubernetes", false: "prometheus"}[kube], "status", resp.StatusCode)
+		slog.Warn("upstream_failed", "request_id", requestID, "upstream", upstream, "status", resp.StatusCode)
 		return fmt.Errorf("upstream status %d", resp.StatusCode)
 	}
 	return json.NewDecoder(io.LimitReader(resp.Body, 8<<20)).Decode(dst)
@@ -392,11 +398,14 @@ func (s *server) webhook(w http.ResponseWriter, r *http.Request) {
 	write(w, 202, map[string]string{"status": "accepted"})
 }
 func main() {
-	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo})))
+	level := slog.LevelInfo
+	_ = level.UnmarshalText([]byte(env("LOG_LEVEL", "INFO")))
+	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: level})))
 	token := os.Getenv("API_TOKEN")
 	hook := os.Getenv("HOOK_TOKEN")
 	if len(token) < 32 || len(hook) < 32 {
-		log.Fatal("API_TOKEN and HOOK_TOKEN must each contain at least 32 characters")
+		slog.Error("startup_invalid_auth_configuration")
+		os.Exit(1)
 	}
 	sa, _ := os.ReadFile("/var/run/secrets/kubernetes.io/serviceaccount/token")
 	ca, _ := os.ReadFile("/var/run/secrets/kubernetes.io/serviceaccount/ca.crt")
@@ -415,5 +424,8 @@ func main() {
 	mux.HandleFunc("/v1/", s.api)
 	mux.HandleFunc("/hooks/", s.webhook)
 	slog.Info("server_started", "port", 8080, "history_enabled", s.history != "")
-	log.Fatal((&http.Server{Addr: ":8080", Handler: accessLog(mux), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 20 * time.Second, WriteTimeout: 30 * time.Second, IdleTimeout: 60 * time.Second}).ListenAndServe())
+	if err := (&http.Server{Addr: ":8080", Handler: accessLog(mux), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 20 * time.Second, WriteTimeout: 30 * time.Second, IdleTimeout: 60 * time.Second}).ListenAndServe(); err != nil {
+		slog.Error("server_stopped", "failure", "listen_or_serve_failed")
+		os.Exit(1)
+	}
 }
