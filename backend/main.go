@@ -22,13 +22,14 @@ import (
 )
 
 type Node struct {
-	Name  string   `json:"name"`
-	Role  string   `json:"role"`
-	Cores int      `json:"cores"`
-	CPU   *float64 `json:"cpuPercent"`
-	Used  *float64 `json:"memoryUsedGiB"`
-	Total *float64 `json:"memoryTotalGiB"`
-	Ready bool     `json:"ready"`
+	Name     string   `json:"name"`
+	Role     string   `json:"role"`
+	Cores    int      `json:"cores"`
+	CPU      *float64 `json:"cpuPercent"`
+	Used     *float64 `json:"memoryUsedGiB"`
+	Total    *float64 `json:"memoryTotalGiB"`
+	Ready    bool     `json:"ready"`
+	Pressure []string `json:"pressure"`
 }
 type Event struct {
 	ID       string `json:"id"`
@@ -60,7 +61,11 @@ type Snapshot struct {
 	MonitorsTotal   *float64 `json:"monitorsTotal"`
 	Download        *float64 `json:"downloadMiB"`
 	BackupAvailable *bool    `json:"backupAvailable"`
+	BackupVolumes   *int     `json:"backupVolumes"`
+	BackupRecorded  *int     `json:"backupRecorded"`
+	BackupLast      string   `json:"backupLast"`
 	Errors          []string `json:"errors"`
+	Issues          []Issue  `json:"issues"`
 }
 type vector struct {
 	Metric map[string]string `json:"metric"`
@@ -183,6 +188,9 @@ func (s *server) snapshot(ctx context.Context) Snapshot {
 		}
 		node.Cores, _ = strconv.Atoi(n.Status.Capacity["cpu"])
 		for _, c := range n.Status.Conditions {
+			if c.Status == "True" && (strings.HasSuffix(c.Type, "Pressure") || c.Type == "NetworkUnavailable") {
+				node.Pressure = append(node.Pressure, c.Type)
+			}
 			if c.Type == "Ready" {
 				node.Ready = c.Status == "True"
 			}
@@ -227,7 +235,26 @@ func (s *server) snapshot(ctx context.Context) Snapshot {
 		}
 		out.BackupAvailable = &ok
 	}
+	var volumes struct {
+		Items []struct {
+			Status struct{ LastBackup, LastBackupAt string }
+		}
+	}
+	if s.get(ctx, s.kube, s.kubeURL+"/apis/longhorn.io/v1beta2/namespaces/longhorn-system/volumes", &volumes, true) == nil {
+		total, recorded := len(volumes.Items), 0
+		for _, volume := range volumes.Items {
+			if volume.Status.LastBackup != "" && volume.Status.LastBackupAt != "" {
+				recorded++
+				if volume.Status.LastBackupAt > out.BackupLast {
+					out.BackupLast = volume.Status.LastBackupAt
+				}
+			}
+		}
+		out.BackupVolumes = &total
+		out.BackupRecorded = &recorded
+	}
 	s.enrichApps(ctx, &out)
+	s.attention(ctx, &out)
 	s.cached = out
 	s.cacheTime = time.Now()
 	return out
