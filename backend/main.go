@@ -49,6 +49,7 @@ type App struct {
 	Pods      int        `json:"pods"`
 	Ready     int        `json:"ready"`
 	Icon      string     `json:"icon"`
+	URL       string     `json:"url"`
 	Resources []Resource `json:"-"`
 }
 type Snapshot struct {

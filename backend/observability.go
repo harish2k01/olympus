@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"crypto/rand"
 	"encoding/hex"
@@ -99,6 +100,9 @@ func (b *broker) publish(frame liveFrame) {
 	data, _ := json.Marshal(frame)
 	b.Lock()
 	defer b.Unlock()
+	if bytes.Equal(data, b.frame) {
+		return
+	}
 	b.frame = data
 	b.revision++
 	if b.changed != nil {
@@ -129,6 +133,7 @@ func (s *server) stream(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("X-Accel-Buffering", "no")
+	slog.Info("stream_connected", "request_id", w.Header().Get("X-Request-ID"))
 	heartbeat := time.NewTicker(10 * time.Second)
 	defer heartbeat.Stop()
 	last := uint64(0)

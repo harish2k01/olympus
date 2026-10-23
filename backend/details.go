@@ -2,11 +2,20 @@ package main
 
 import (
 	"context"
+	_ "embed"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/url"
+	"regexp"
+	"strconv"
 	"strings"
+	"time"
 )
+
+//go:embed icons.json
+var chartIcons []byte
+var icons = func() map[string]string { m := map[string]string{}; _ = json.Unmarshal(chartIcons, &m); return m }()
 
 type Resource struct {
 	Kind      string `json:"kind"`
@@ -48,6 +57,13 @@ func (p pod) ready() bool {
 	return true
 }
 func (s *server) enrichApps(ctx context.Context, out *Snapshot) {
+	var routes struct {
+		Items []struct {
+			Metadata struct{ Name, Namespace string }
+			Spec     struct{ Hostnames []string }
+		}
+	}
+	_ = s.get(ctx, s.kube, s.kubeURL+"/apis/gateway.networking.k8s.io/v1/httproutes", &routes, true)
 	var pods struct{ Items []pod }
 	if s.get(ctx, s.kube, s.kubeURL+"/api/v1/pods", &pods, true) != nil {
 		out.Errors = append(out.Errors, "Workload data unavailable")
@@ -82,6 +98,18 @@ func (s *server) enrichApps(ctx context.Context, out *Snapshot) {
 	for i := range out.Apps {
 		a := &out.Apps[i]
 		a.Icon = iconName(a.Name)
+		for _, resource := range a.Resources {
+			if resource.Kind == "HTTPRoute" {
+				for _, route := range routes.Items {
+					if resource.Name == route.Metadata.Name && resource.Namespace == route.Metadata.Namespace && len(route.Spec.Hostnames) > 0 {
+						host := route.Spec.Hostnames[0]
+						if !strings.ContainsAny(host, "/*:@") {
+							a.URL = "https://" + host
+						}
+					}
+				}
+			}
+		}
 		c, m := 0.0, 0.0
 		completeCPU, completeMem := e1 == nil, e2 == nil
 		for _, p := range pods.Items {
@@ -133,9 +161,20 @@ func (s *server) enrichApps(ctx context.Context, out *Snapshot) {
 	}
 }
 func iconName(name string) string {
+	if strings.Contains(name, "gh-runner") {
+		return "https://raw.githubusercontent.com/selfhst/icons/main/png/github.png"
+	}
+	if icon := icons[name]; icon != "" {
+		return icon
+	}
+	for _, suffix := range []string{"4k", "anime", "-exporter"} {
+		if icon := icons[strings.TrimSuffix(name, suffix)]; icon != "" {
+			return icon
+		}
+	}
 	for _, known := range []string{"sonarr", "radarr", "prowlarr", "bazarr", "jellyfin", "qbittorrent", "argocd", "longhorn", "grafana", "prometheus", "uptime-kuma", "immich", "ghost", "vault", "traefik", "paperless-ngx", "home-assistant", "seerr"} {
 		if strings.Contains(name, known) {
-			return known
+			return "https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/png/" + known + ".png"
 		}
 	}
 	return ""
@@ -205,5 +244,31 @@ func (s *server) nodeDetail(w http.ResponseWriter, r *http.Request, ctx context.
 		write(w, 502, map[string]string{"error": "Workloads unavailable"})
 		return
 	}
-	write(w, 200, map[string]any{"node": node, "pods": pods.Items})
+	stats := map[string]*float64{}
+	for _, address := range node.Status.Addresses {
+		if address["type"] != "InternalIP" {
+			continue
+		}
+		ip, _ := address["address"].(string)
+		selector := `job="node-exporter",instance=~` + strconv.Quote(regexp.QuoteMeta(ip)+":.*")
+		stats["diskUsedPercent"] = s.scalar(ctx, `max(100*(1-node_filesystem_avail_bytes{`+selector+`,mountpoint=~"/|/var",fstype!~"tmpfs|overlay"}/node_filesystem_size_bytes{`+selector+`,mountpoint=~"/|/var",fstype!~"tmpfs|overlay"}))`)
+		stats["receiveMiBs"] = s.scalar(ctx, `sum(rate(node_network_receive_bytes_total{`+selector+`,device!~"lo|veth.*|cali.*|cilium.*|lxc.*"}[5m]))/1048576`)
+		stats["transmitMiBs"] = s.scalar(ctx, `sum(rate(node_network_transmit_bytes_total{`+selector+`,device!~"lo|veth.*|cali.*|cilium.*|lxc.*"}[5m]))/1048576`)
+	}
+	var history struct {
+		Data struct {
+			Result []struct{ Values [][]json.RawMessage }
+		}
+	}
+	query := ""
+	for _, address := range node.Status.Addresses {
+		if address["type"] == "InternalIP" {
+			ip, _ := address["address"].(string)
+			query = `100*(1-avg(rate(node_cpu_seconds_total{job="node-exporter",instance=~` + strconv.Quote(regexp.QuoteMeta(ip)+":.*") + `,mode="idle"}[5m])))`
+		}
+	}
+	if query != "" {
+		_ = s.get(ctx, s.client, s.prom+"/api/v1/query_range?query="+url.QueryEscape(query)+"&start="+fmt.Sprint(time.Now().Add(-15*time.Minute).Unix())+"&end="+fmt.Sprint(time.Now().Unix())+"&step=30", &history, false)
+	}
+	write(w, 200, map[string]any{"node": node, "pods": pods.Items, "stats": stats, "cpuHistory": history.Data.Result})
 }
