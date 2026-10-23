@@ -155,6 +155,22 @@ class MainActivity:ComponentActivity(){
     }
 }
 @Composable private fun DeskModules(media:Boolean,machines:Boolean,swapped:Boolean,open:(String)->Unit){
+    if(LocalConfiguration.current.screenWidthDp>650){
+        val tiles=mutableListOf(
+            Triple("CPU usage","${LiveRepository.cpuPercent.pretty()}%","${LiveRepository.totalCores} cores · Weighted total"),
+            Triple("Memory","${LiveRepository.memoryPercent.pretty()}%","${LiveRepository.usedMemory.pretty()} / ${LiveRepository.totalMemory.pretty()} GiB"),
+            Triple("GitOps","${LiveRepository.services.count{it.health=="Healthy"&&it.sync=="Synced"}} / ${LiveRepository.services.size}","Healthy & Synced"),
+            Triple("Protection",when(LiveRepository.backup){true->"Available";false->"Backup gap";null->"Unavailable"},"Longhorn · Review →")
+        )
+        if(media)tiles.add(Triple("Downloads","${LiveRepository.download.pretty()} MiB/s","qBittorrent exporter"))
+        if(machines)tiles.add(Triple("Compute","${LiveRepository.nodes.size} nodes","${LiveRepository.nodes.count{it.ready}} ready"))
+        if(swapped){val first=tiles[0];tiles[0]=tiles[3];tiles[3]=first}
+        tiles.chunked(3).forEach{row->Row(horizontalArrangement=Arrangement.spacedBy(10.dp)){
+            row.forEach{(label,value,meta)->val soft=label=="Memory";val warm=label=="Protection";Module(label,value,meta,if(soft)Lilac else if(warm)Apricot else Tile,if(soft)Color(0xFF302848) else if(warm)Color(0xFF452613) else Paper,Modifier.weight(1f)){open(when(label){"CPU usage","Memory","Compute"->"Cluster resources";"Protection"->"Protection";"GitOps"->"argocd";else->"qbittorrent"})}}
+            repeat(3-row.size){Spacer(Modifier.weight(1f))}
+        }}
+        return
+    }
     Row(horizontalArrangement=Arrangement.spacedBy(10.dp)){
         if(!swapped)Module("CPU usage","${LiveRepository.cpuPercent.pretty()}%","${LiveRepository.totalCores} cores · Weighted total",Tile,Paper,Modifier.weight(1f)){open("Cluster resources")}
         Module("Protection",when(LiveRepository.backup){true->"Available";false->"Backup gap";null->"Unavailable"},"Longhorn · Review →",Apricot,Color(0xFF452613),Modifier.weight(1f)){open("Protection")}
@@ -170,7 +186,8 @@ class MainActivity:ComponentActivity(){
     }}
 }
 @Composable private fun Module(label:String,value:String,meta:String,bg:Color,fg:Color,modifier:Modifier=Modifier,click:()->Unit){
-    Column(modifier.animateContentSize().clip(RoundedCornerShape(23.dp)).background(bg).clickable(onClick=click).padding(17.dp).heightIn(min=96.dp)){
+    val wide=LocalConfiguration.current.screenWidthDp>650
+    Column(modifier.animateContentSize().clip(RoundedCornerShape(23.dp)).background(bg).clickable(onClick=click).padding(if(wide)13.dp else 17.dp).heightIn(min=if(wide)78.dp else 96.dp)){
         Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween){Text(label,fontSize=12.sp,color=fg);Text("↗",color=fg)}
         Text(value,fontSize=24.sp,fontWeight=FontWeight.Medium,color=fg,modifier=Modifier.padding(top=12.dp,bottom=7.dp))
         Text(meta,fontSize=11.sp,color=fg.copy(alpha=.75f),lineHeight=16.sp)
