@@ -352,7 +352,10 @@ func (s *server) webhook(w http.ResponseWriter, r *http.Request) {
 		s.events = s.events[:2000]
 	}
 	s.mu.Unlock()
-	s.saveHistory()
+	if s.saveHistory() != nil {
+		write(w, 503, map[string]string{"error": "Event storage unavailable"})
+		return
+	}
 	s.signal()
 	slog.Info("webhook_accepted", "event_id", event.ID)
 	write(w, 202, map[string]string{"status": "accepted"})

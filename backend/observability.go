@@ -247,9 +247,9 @@ func (s *server) loadHistory() {
 		s.events = []Event{}
 	}
 }
-func (s *server) saveHistory() {
+func (s *server) saveHistory() error {
 	if s.history == "" {
-		return
+		return nil
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -266,5 +266,7 @@ func (s *server) saveHistory() {
 	tmp := s.history + ".tmp"
 	if os.MkdirAll(filepath.Dir(s.history), 0700) != nil || os.WriteFile(tmp, data, 0600) != nil || os.Rename(tmp, s.history) != nil {
 		slog.Error("history_save_failed")
+		return fmt.Errorf("history storage unavailable")
 	}
+	return nil
 }

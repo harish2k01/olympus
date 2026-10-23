@@ -133,6 +133,9 @@ func (s *server) enrichApps(ctx context.Context, out *Snapshot) {
 			if !owned {
 				continue
 			}
+			if p.Status.Phase == "Succeeded" {
+				continue
+			}
 			a.Pods++
 			if p.ready() {
 				a.Ready++
@@ -211,6 +214,9 @@ func safeDetail(payload map[string]any) string {
 		return ""
 	}
 	data, _ := json.MarshalIndent(out, "", "  ")
+	if len(data) > 6000 {
+		return string(data[:6000]) + "…"
+	}
 	return string(data)
 }
 func (s *server) nodeDetail(w http.ResponseWriter, r *http.Request, ctx context.Context) {
