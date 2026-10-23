@@ -15,11 +15,14 @@ metadata:
   name: olympus-readonly
 rules:
   - apiGroups: [""]
-    resources: [nodes, events]
+    resources: [nodes, events, pods]
+    verbs: [get, list, watch]
+  - apiGroups: [apps]
+    resources: [replicasets]
     verbs: [get, list]
   - apiGroups: [argoproj.io]
     resources: [applications]
-    verbs: [get, list]
+    verbs: [get, list, watch]
   - apiGroups: [longhorn.io]
     resources: [backuptargets]
     verbs: [get, list]
@@ -44,6 +47,7 @@ metadata:
   namespace: olympus
 spec:
   replicas: 1
+  strategy: {type: Recreate}
   selector:
     matchLabels: {app: olympus-backend}
   template:
@@ -54,13 +58,18 @@ spec:
       securityContext:
         runAsNonRoot: true
         runAsUser: 65532
+        fsGroup: 65532
         seccompProfile: {type: RuntimeDefault}
       containers:
         - name: api
-          image: ghcr.io/harish2k01/olympus-backend:f2ada9041c1b54ac60a3c845754bc5d72a75c063
+          image: ghcr.io/harish2k01/olympus-backend:64e39ffa33997ae40b10ec66377c596e1b30389e
           ports: [{name: http, containerPort: 8080}]
           envFrom:
             - secretRef: {name: olympus-auth}
+          env:
+            - {name: HISTORY_FILE, value: /data/events.json}
+          volumeMounts:
+            - {name: history, mountPath: /data}
           resources:
             requests: {cpu: 20m, memory: 32Mi}
             limits: {memory: 128Mi}
@@ -73,6 +82,20 @@ spec:
           livenessProbe:
             httpGet: {path: /healthz, port: http}
             initialDelaySeconds: 5
+      volumes:
+        - name: history
+          persistentVolumeClaim: {claimName: olympus-history}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: olympus-history
+  namespace: olympus
+spec:
+  accessModes: [ReadWriteOnce]
+  storageClassName: longhorn
+  resources:
+    requests: {storage: 1Gi}
 ---
 apiVersion: v1
 kind: Service
