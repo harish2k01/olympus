@@ -54,6 +54,8 @@ func route(path string) string {
 		return "webhook"
 	case strings.HasPrefix(path, "/v1/nodes/"):
 		return "node_detail"
+	case strings.HasPrefix(path, "/v1/apps/"):
+		return "app_tree"
 	default:
 		return "unknown"
 	}

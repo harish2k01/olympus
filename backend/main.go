@@ -50,7 +50,7 @@ type App struct {
 	Ready     int        `json:"ready"`
 	Icon      string     `json:"icon"`
 	URL       string     `json:"url"`
-	Resources []Resource `json:"-"`
+	Resources []Resource `json:"resources"`
 }
 type Snapshot struct {
 	Time            string   `json:"time"`
@@ -306,6 +306,10 @@ func (s *server) api(w http.ResponseWriter, r *http.Request) {
 	case "/v1/events":
 		write(w, 200, s.feed(ctx))
 	default:
+		if strings.HasPrefix(r.URL.Path, "/v1/apps/") {
+			s.appTree(w, r, ctx)
+			return
+		}
 		if strings.HasPrefix(r.URL.Path, "/v1/nodes/") {
 			s.nodeDetail(w, r, ctx)
 			return

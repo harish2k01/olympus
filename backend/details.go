@@ -25,6 +25,7 @@ type Resource struct {
 type pod struct {
 	Metadata struct {
 		Name, Namespace, UID string
+		CreationTimestamp    string
 		Labels               map[string]string
 		OwnerReferences      []struct{ Kind, Name string }
 	} `json:"metadata"`
@@ -34,6 +35,11 @@ type pod struct {
 			Name      string
 			Resources struct{ Requests, Limits map[string]string }
 		}
+		InitContainers []struct {
+			Name, RestartPolicy string
+			Resources           struct{ Requests, Limits map[string]string }
+		}
+		Overhead map[string]string
 	} `json:"spec"`
 	Status struct {
 		Phase             string
@@ -69,22 +75,9 @@ func (s *server) enrichApps(ctx context.Context, out *Snapshot) {
 		out.Errors = append(out.Errors, "Workload data unavailable")
 		return
 	}
-	var replicas struct {
-		Items []struct {
-			Metadata struct {
-				Name, Namespace string
-				OwnerReferences []struct{ Kind, Name string }
-			}
-		}
-	}
-	_ = s.get(ctx, s.kube, s.kubeURL+"/apis/apps/v1/replicasets", &replicas, true)
-	owners := map[string]string{}
-	for _, rs := range replicas.Items {
-		for _, o := range rs.Metadata.OwnerReferences {
-			if o.Kind == "Deployment" {
-				owners[rs.Metadata.Namespace+"/"+rs.Metadata.Name] = o.Name
-			}
-		}
+	workloads, partial := s.workloadNodes(ctx)
+	if partial {
+		out.Errors = append(out.Errors, "Workload ownership incomplete")
 	}
 	cpu, e1 := s.query(ctx, `sum by(namespace,pod) (rate(container_cpu_usage_seconds_total{container!="",container!="POD"}[5m]))`)
 	memory, e2 := s.query(ctx, `sum by(namespace,pod) (container_memory_working_set_bytes{container!="",container!="POD"}) / 1048576`)
@@ -112,22 +105,16 @@ func (s *server) enrichApps(ctx context.Context, out *Snapshot) {
 		}
 		c, m := 0.0, 0.0
 		completeCPU, completeMem := e1 == nil, e2 == nil
+		ownedIDs := map[string]bool{}
+		for _, resource := range a.Resources {
+			ownedIDs[resourceID(resource.Kind, resource.Namespace, resource.Name)] = true
+		}
+		descendants(ownedIDs, workloads)
 		for _, p := range pods.Items {
-			owned := false
-			for _, resource := range a.Resources {
-				if resource.Namespace != p.Metadata.Namespace {
-					continue
-				}
-				if resource.Kind == "Pod" && resource.Name == p.Metadata.Name {
+			owned := ownedIDs[resourceID("Pod", p.Metadata.Namespace, p.Metadata.Name)]
+			for _, owner := range p.Metadata.OwnerReferences {
+				if ownedIDs[resourceID(owner.Kind, p.Metadata.Namespace, owner.Name)] {
 					owned = true
-				}
-				for _, owner := range p.Metadata.OwnerReferences {
-					if resource.Kind == owner.Kind && resource.Name == owner.Name {
-						owned = true
-					}
-					if owner.Kind == "ReplicaSet" && resource.Kind == "Deployment" && resource.Name == owners[p.Metadata.Namespace+"/"+owner.Name] {
-						owned = true
-					}
 				}
 			}
 			if !owned {
@@ -233,6 +220,8 @@ func (s *server) nodeDetail(w http.ResponseWriter, r *http.Request, ctx context.
 		Spec struct {
 			Taints        []map[string]any
 			Unschedulable bool
+			PodCIDR       string
+			PodCIDRs      []string
 		}
 		Status struct {
 			Capacity, Allocatable map[string]string
@@ -276,5 +265,46 @@ func (s *server) nodeDetail(w http.ResponseWriter, r *http.Request, ctx context.
 	if query != "" {
 		_ = s.get(ctx, s.client, s.prom+"/api/v1/query_range?query="+url.QueryEscape(query)+"&start="+fmt.Sprint(time.Now().Add(-15*time.Minute).Unix())+"&end="+fmt.Sprint(time.Now().Unix())+"&step=30", &history, false)
 	}
-	write(w, 200, map[string]any{"node": node, "pods": pods.Items, "stats": stats, "cpuHistory": history.Data.Result})
+	requests, limits := map[string]float64{}, map[string]float64{}
+	workloads := []map[string]any{}
+	for _, p := range pods.Items {
+		if p.Status.Phase == "Succeeded" || p.Status.Phase == "Failed" {
+			continue
+		}
+		req, lim := podAllocation(p, false), podAllocation(p, true)
+		for key, value := range req {
+			requests[key] += value
+		}
+		for key, value := range lim {
+			limits[key] += value
+		}
+		restarts := 0
+		ready := 0
+		for _, container := range p.Status.ContainerStatuses {
+			restarts += container.RestartCount
+			if container.Ready {
+				ready++
+			}
+		}
+		workloads = append(workloads, map[string]any{"namespace": p.Metadata.Namespace, "name": p.Metadata.Name, "phase": p.Status.Phase, "ready": ready, "containers": len(p.Spec.Containers), "restarts": restarts, "createdAt": p.Metadata.CreationTimestamp, "requests": req, "limits": lim})
+	}
+	allocations := []allocation{}
+	for resource, capacity := range node.Status.Capacity {
+		row := allocation{Resource: resource, Capacity: capacity, Allocatable: node.Status.Allocatable[resource], Requests: requests[resource], Limits: limits[resource]}
+		if amount := quantity(row.Allocatable); amount > 0 {
+			r, l := row.Requests/amount*100, row.Limits/amount*100
+			row.RequestPercent = &r
+			row.LimitPercent = &l
+		}
+		allocations = append(allocations, row)
+	}
+	var events struct {
+		Items []struct {
+			Reason, Message, Type, LastTimestamp, FirstTimestamp string
+			Count                                                int
+			EventTime                                            string
+		}
+	}
+	_ = s.get(ctx, s.kube, s.kubeURL+"/api/v1/events?fieldSelector="+url.QueryEscape("involvedObject.kind=Node,involvedObject.name="+name), &events, true)
+	write(w, 200, map[string]any{"node": node, "pods": pods.Items, "stats": stats, "cpuHistory": history.Data.Result, "allocations": allocations, "workloads": workloads, "events": events.Items})
 }
