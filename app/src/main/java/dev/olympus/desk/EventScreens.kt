@@ -39,7 +39,7 @@ private fun groupingKey(e:LabEvent)=listOf(e.source,e.title,e.detail,e.kind)
 
  OutlinedTextField(value=query,onValueChange={query=it},label={Text("Search notifications")},singleLine=true,modifier=Modifier.fillMaxWidth().padding(top=6.dp))
  CompactTabs(listOf("Today","7 days","30 days"),period,{period=it})
- Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())){(listOf("All")+LiveRepository.events.filter{showTests||!(it.kind=="Test"||it.source=="Test"||it.title=="Test")}.map{it.source}.distinct().sorted()).forEach{label->FilterChip(selected=source==label,onClick={source=label},label={Text(label)},modifier=Modifier.padding(end=7.dp))}}
+ Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())){(listOf("All")+(LiveRepository.events+older).distinctBy{it.id}.filter{showTests||!(it.kind=="Test"||it.source=="Test"||it.title=="Test")}.map{it.source}.distinct().sorted()).forEach{label->FilterChip(selected=source==label,onClick={source=label},label={Text(label)},modifier=Modifier.padding(end=7.dp))}}
  val cutoff=java.time.Instant.now().minusSeconds(when(period){"Today"->java.time.Duration.between(java.time.LocalDate.now().atStartOfDay(java.time.ZoneId.systemDefault()).toInstant(),java.time.Instant.now()).seconds;"7 days"->604800L;else->2592000L})
  val events=(LiveRepository.events+older).distinctBy{it.id}.filter{e->(query.isBlank()||e.title.contains(query,true)||e.detail.contains(query,true)||e.source.contains(query,true))&&try{java.time.Instant.parse(e.time).isAfter(cutoff)}catch(_:Exception){true}}.filter{(source=="All"||it.source==source)&&(showTests||!(it.kind=="Test"||it.source=="Test"||it.title=="Test"))}
  if(events.isEmpty())Text("No notifications in this filter",color=EventMuted,modifier=Modifier.padding(20.dp))
@@ -52,17 +52,17 @@ private fun groupingKey(e:LabEvent)=listOf(e.source,e.title,e.detail,e.kind)
   Row(verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(9.dp)){
    AppIcon(eventIcon(event),event.source)
    Column(Modifier.weight(1f)){Text(event.source,color=EventLilac,fontSize=11.sp);Text(localTime(event.received.ifBlank{event.time}),color=EventMuted,fontSize=10.sp)}
-   Text((if(event.title=="Test")"Test"else event.kind)+(if(count>1)" · ×$count"else""),color=EventWarm,fontSize=11.sp)
+   Text((if(event.title=="Test")"Test"else event.kind.replaceFirstChar{it.uppercase()})+(if(count>1)" · ×$count"else""),color=EventWarm,fontSize=11.sp)
   }
   Text(event.title,color=EventPaper,fontSize=15.sp,fontWeight=FontWeight.Medium,modifier=Modifier.padding(top=10.dp))
-  val message=try{val data=JSONObject(event.detail);data.optString("message").ifBlank{data.optString("msg")}.ifBlank{data.optString("description")}}catch(_:Exception){event.detail}
+  val message=try{val data=JSONObject(event.detail);data.optString("message").ifBlank{data.optString("msg")}.ifBlank{data.optString("description")}}catch(_:Exception){cleanEventMessage(event.detail)}
   if(message.isNotBlank())Text(message,color=EventMuted,fontSize=12.sp,maxLines=2,overflow=TextOverflow.Ellipsis,modifier=Modifier.padding(top=5.dp))
  }
 }
 
 @Composable internal fun NotificationDetail(event:LabEvent){
  val context=LocalContext.current
- Row(Modifier.padding(top=12.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(10.dp)){AppIcon(eventIcon(event),event.source);Text(event.source,color=EventLilac,fontSize=12.sp);Text(if(event.title=="Test")"Test"else event.kind,color=EventWarm,fontSize=12.sp)}
+ Row(Modifier.padding(top=12.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(10.dp)){AppIcon(eventIcon(event),event.source);Text(event.source,color=EventLilac,fontSize=12.sp);Text(if(event.title=="Test")"Test"else event.kind.replaceFirstChar{it.uppercase()},color=EventWarm,fontSize=12.sp)}
  Text(event.title,color=EventPaper,fontSize=23.sp,lineHeight=29.sp,fontWeight=FontWeight.SemiBold,modifier=Modifier.padding(vertical=8.dp))
  val data=try{JSONObject(event.detail)}catch(_:Exception){null}
  val rows=mutableListOf<List<String>>()

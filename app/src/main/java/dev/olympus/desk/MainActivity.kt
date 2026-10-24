@@ -3,6 +3,7 @@ package dev.olympus.desk
 import android.os.Bundle
 import android.content.Intent
 import android.view.WindowManager
+import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
@@ -29,6 +30,10 @@ class MainActivity:ComponentActivity(){
         window.attributes=window.attributes.apply {layoutInDisplayCutoutMode=WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES}
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         immersive()
+        ViewCompat.setOnApplyWindowInsetsListener(window.decorView){view,insets->
+            if(insets.isVisible(WindowInsetsCompat.Type.statusBars()))view.postDelayed({if(!isFinishing&&!isDestroyed)immersive()},2500)
+            insets
+        }
         pairFromDebugIntent(intent)
         lifecycleScope.launch {
           val cache=java.io.File(filesDir,"last-frame.json")

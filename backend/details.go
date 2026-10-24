@@ -313,6 +313,17 @@ func eventKind(payload map[string]any) string {
 	if kind, _ := payload["eventType"].(string); strings.EqualFold(kind, "test") {
 		return "Test"
 	}
+	for _, field := range []string{"title", "msg"} {
+		if value, _ := payload[field].(string); strings.EqualFold(strings.TrimSpace(value), "test") {
+			return "Test"
+		}
+	}
+	// Robusta serializes Python enums as objects. Keep only the name, never its class dump.
+	if severity, ok := payload["severity"].(map[string]any); ok {
+		if name, _ := severity["_name_"].(string); name == "HIGH" || name == "INFO" || name == "LOW" || name == "DEBUG" {
+			return strings.ToUpper(name[:1]) + strings.ToLower(name[1:])
+		}
+	}
 	if severity, _ := payload["severity"].(string); severity != "" {
 		return severity
 	}
