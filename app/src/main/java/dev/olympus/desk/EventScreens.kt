@@ -59,6 +59,7 @@ private fun groupingKey(e:LabEvent)=listOf(e.source,e.title,e.detail,e.kind)
   }
   Text(event.kind.replaceFirstChar{it.uppercase()},color=if(isInformational(event.kind))EventMuted else EventWarm,fontSize=10.sp)
   Text(event.title,color=EventPaper,fontSize=15.sp,fontWeight=FontWeight.Medium,modifier=Modifier.padding(top=8.dp))
+  if(event.pod.isNotBlank()||event.node.isNotBlank())Text(listOfNotNull(event.node.takeIf{it.isNotBlank()}?.let{"Node $it"},event.namespace.takeIf{it.isNotBlank()},event.pod.takeIf{it.isNotBlank()}).joinToString(" · "),color=EventMuted,fontSize=11.sp,maxLines=1,overflow=TextOverflow.Ellipsis,modifier=Modifier.padding(top=4.dp))
   val message=try{val data=JSONObject(event.detail);data.optString("message").ifBlank{data.optString("msg")}.ifBlank{data.optString("description")}}catch(_:Exception){cleanEventMessage(event.detail)}
   if(message.isNotBlank())Text(message,color=EventMuted,fontSize=12.sp,maxLines=2,overflow=TextOverflow.Ellipsis,modifier=Modifier.padding(top=5.dp))
  }
@@ -69,6 +70,7 @@ private fun groupingKey(e:LabEvent)=listOf(e.source,e.title,e.detail,e.kind)
  Row(Modifier.padding(top=12.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(10.dp)){AppIcon(eventIcon(event),event.source);Text(event.source,color=EventLilac,fontSize=12.sp);Text(if(event.title=="Test")"Test"else event.state.ifBlank{event.kind}.replace("Unknown","Unconfirmed"),color=EventWarm,fontSize=12.sp)}
  Text(event.title,color=EventPaper,fontSize=23.sp,lineHeight=29.sp,fontWeight=FontWeight.SemiBold,modifier=Modifier.padding(vertical=8.dp))
  Text(event.kind.replaceFirstChar{it.uppercase()},color=if(isInformational(event.kind))EventMuted else EventWarm,fontSize=12.sp)
+ if(event.node.isNotBlank()||event.pod.isNotBlank())Text(listOfNotNull(event.node.takeIf{it.isNotBlank()}?.let{"Node $it"},event.namespace.takeIf{it.isNotBlank()},event.pod.takeIf{it.isNotBlank()}).joinToString(" · "),color=EventMuted,fontSize=12.sp,modifier=Modifier.padding(vertical=6.dp))
  val data=try{JSONObject(event.detail)}catch(_:Exception){null}
  val rows=mutableListOf<List<String>>()
  if(event.cpuLimit.isNotBlank())rows.add(listOf("Container CPU limit",event.cpuLimit))

@@ -236,7 +236,7 @@ private fun destination(w:DeskWidget)=when(w.kind){"Clock"->"Home";"Monitors"->"
   "Memory"->{Text("${LiveRepository.usedMemory.fmt()} / ${LiveRepository.totalMemory.fmt()} GiB",color=secondary,fontSize=11.sp);Spark(LiveRepository.history["memory"]?:emptyList(),Lilac)}
   "App"->{ResourceMiniMap(app?.resources?:emptyList(),app?.pods?:0)}
   "Node"->{Text("CPU ${node?.cpuPercent.fmt()}%",color=secondary,fontSize=11.sp);Spark(LiveRepository.history["node:${w.target}"]?:emptyList(),Cobalt)}
-  "Events"->{Text("Last 24 hours",color=secondary,fontSize=11.sp);Text("${firing.size} firing · ${firing.count{isInformational(it.kind)}} info",color=secondary,fontSize=10.sp)}
+  "Events"->{Text("Last 24 hours",color=secondary,fontSize=11.sp)}
   "Alerts"->{Text("${firing.count{!isInformational(it.kind)}} actionable · ${firing.count{isInformational(it.kind)}} info",color=secondary,fontSize=11.sp);firing.firstOrNull()?.let{Text(it.title,color=fg,fontSize=12.sp,maxLines=1,overflow=TextOverflow.Ellipsis)}}
   "Attention"->{LiveRepository.issues.take(if(w.height>=2)3 else 1).forEach{Text(it.title,color=fg,fontSize=12.sp,maxLines=2,overflow=TextOverflow.Ellipsis)};if(LiveRepository.issues.isEmpty())Text(if(LiveRepository.lastSuccess==0L)"Connecting…"else if(LiveRepository.active.any{isInformational(it.kind)&&it.state=="Firing"})"${LiveRepository.active.count{isInformational(it.kind)&&it.state=="Firing"}} informational"else"Healthy",color=fg,fontSize=12.sp)}
   "Backups"->Text("Longhorn destination",color=secondary,fontSize=11.sp)
