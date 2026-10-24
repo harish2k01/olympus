@@ -31,13 +31,19 @@ type Node struct {
 	Pressure []string `json:"pressure"`
 }
 type Event struct {
-	ID       string `json:"id"`
-	Source   string `json:"source"`
-	Title    string `json:"title"`
-	Detail   string `json:"detail"`
-	Kind     string `json:"kind"`
-	Time     string `json:"time"`
-	Received string `json:"receivedAt,omitempty"`
+	ID         string `json:"id"`
+	Source     string `json:"source"`
+	Title      string `json:"title"`
+	Detail     string `json:"detail"`
+	Kind       string `json:"kind"`
+	Time       string `json:"time"`
+	Received   string `json:"receivedAt,omitempty"`
+	State      string `json:"state,omitempty"`
+	ResolvedAt string `json:"resolvedAt,omitempty"`
+	LastSeen   string `json:"lastSeen,omitempty"`
+	Domain     string `json:"domain,omitempty"`
+	Resource   string `json:"resource,omitempty"`
+	Evidence   string `json:"evidence,omitempty"`
 }
 type App struct {
 	Name      string     `json:"name"`
@@ -53,19 +59,22 @@ type App struct {
 	Resources []Resource `json:"resources"`
 }
 type Snapshot struct {
-	Time            string    `json:"time"`
-	Nodes           []Node    `json:"nodes"`
-	Apps            []App     `json:"apps"`
-	MonitorsUp      *float64  `json:"monitorsUp"`
-	MonitorsTotal   *float64  `json:"monitorsTotal"`
-	Monitors        []Monitor `json:"monitors"`
-	Download        *float64  `json:"downloadMiB"`
-	BackupAvailable *bool     `json:"backupAvailable"`
-	BackupVolumes   *int      `json:"backupVolumes"`
-	BackupRecorded  *int      `json:"backupRecorded"`
-	BackupLast      string    `json:"backupLast"`
-	Errors          []string  `json:"errors"`
-	Issues          []Issue   `json:"issues"`
+	Time            string             `json:"time"`
+	Nodes           []Node             `json:"nodes"`
+	Apps            []App              `json:"apps"`
+	MonitorsUp      *float64           `json:"monitorsUp"`
+	MonitorsTotal   *float64           `json:"monitorsTotal"`
+	Monitors        []Monitor          `json:"monitors"`
+	Active          []Event            `json:"active"`
+	Signals         map[string]bool    `json:"signals"`
+	Integrations    []IntegrationState `json:"integrations"`
+	Download        *float64           `json:"downloadMiB"`
+	BackupAvailable *bool              `json:"backupAvailable"`
+	BackupVolumes   *int               `json:"backupVolumes"`
+	BackupRecorded  *int               `json:"backupRecorded"`
+	BackupLast      string             `json:"backupLast"`
+	Errors          []string           `json:"errors"`
+	Issues          []Issue            `json:"issues"`
 }
 type vector struct {
 	Metric map[string]string `json:"metric"`
@@ -77,6 +86,9 @@ type server struct {
 	prom, kubeURL, sa, token, hook, history string
 	mu                                      sync.Mutex
 	events                                  []Event
+	integrations                            []IntegrationConfig
+	integrationCache                        []IntegrationState
+	integrationTime                         time.Time
 	cached                                  Snapshot
 	cacheTime                               time.Time
 	collect                                 sync.Mutex
@@ -263,6 +275,8 @@ func (s *server) snapshot(ctx context.Context) Snapshot {
 	}
 	s.enrichApps(ctx, &out)
 	s.attention(ctx, &out)
+	s.collectIncidents(ctx, &out)
+	out.Integrations = s.serviceIntegrations(ctx)
 	s.cached = out
 	s.cacheTime = time.Now()
 	return out
@@ -287,25 +301,7 @@ func (s *server) feed(ctx context.Context) []Event {
 			if e.Type != "Warning" {
 				continue
 			}
-			out = append(out, Event{e.Metadata.UID, "Kubernetes", e.Reason, e.InvolvedObject.Namespace + "/" + e.InvolvedObject.Name + ": " + e.Message, "Warning", e.LastTimestamp, ""})
-		}
-	}
-	var alerts struct {
-		Data struct {
-			Alerts []struct {
-				Labels      map[string]string
-				Annotations map[string]string
-				ActiveAt    string
-			}
-		}
-	}
-	if s.get(ctx, s.client, s.prom+"/api/v1/alerts", &alerts, false) == nil {
-		for _, a := range alerts.Data.Alerts {
-			if a.Labels["alertname"] == "Watchdog" || a.Labels["alertname"] == "InfoInhibitor" {
-				continue
-			}
-			identity, _ := json.Marshal(a.Labels)
-			out = append(out, Event{string(identity), "Prometheus", a.Labels["alertname"], a.Annotations["summary"], a.Labels["severity"], a.ActiveAt, ""})
+			out = append(out, Event{ID: e.Metadata.UID, Source: "Kubernetes", Title: e.Reason, Detail: e.InvolvedObject.Namespace + "/" + e.InvolvedObject.Name + ": " + e.Message, Kind: "Warning", Time: e.LastTimestamp, State: "Observed", Resource: e.InvolvedObject.Namespace + "/" + e.InvolvedObject.Name, Evidence: "Kubernetes warning observed; recovery is not confirmed by this record"})
 		}
 	}
 	// Persist observed warning/alert changes as well as incoming webhooks.
@@ -323,8 +319,17 @@ func (s *server) feed(ctx context.Context) []Event {
 	for _, event := range unique {
 		out = append(out, event)
 	}
-	sort.SliceStable(out, func(i, j int) bool { return out[i].Time > out[j].Time })
+	sort.SliceStable(out, func(i, j int) bool { return eventOrder(out[i]) > eventOrder(out[j]) })
 	s.mu.Lock()
+	currentByID := map[string]Event{}
+	for _, event := range s.events {
+		currentByID[event.ID] = event
+	}
+	for i, event := range out {
+		if current, ok := currentByID[event.ID]; ok && current.Domain != "" {
+			out[i] = current
+		}
+	}
 	// A webhook may arrive while upstream queries run; never overwrite it.
 	for _, event := range s.events {
 		if _, exists := unique[event.ID]; !exists {
@@ -339,7 +344,7 @@ func (s *server) feed(ctx context.Context) []Event {
 	s.mu.Lock()
 	out = append([]Event{}, s.events...)
 	s.mu.Unlock()
-	sort.SliceStable(out, func(i, j int) bool { return out[i].Time > out[j].Time })
+	sort.SliceStable(out, func(i, j int) bool { return eventOrder(out[i]) > eventOrder(out[j]) })
 	if len(out) > 100 {
 		out = out[:100]
 	}
@@ -383,7 +388,7 @@ func (s *server) api(w http.ResponseWriter, r *http.Request) {
 		s.mu.Lock()
 		rows := append([]Event{}, s.events...)
 		s.mu.Unlock()
-		sort.SliceStable(rows, func(i, j int) bool { return rows[i].Time > rows[j].Time })
+		sort.SliceStable(rows, func(i, j int) bool { return eventOrder(rows[i]) > eventOrder(rows[j]) })
 		if offset > len(rows) {
 			offset = len(rows)
 		}
@@ -436,7 +441,8 @@ func (s *server) webhook(w http.ResponseWriter, r *http.Request) {
 		title = title[:500]
 	}
 	now := time.Now().UTC()
-	event := Event{fmt.Sprint(now.UnixNano()), source, title, safeDetail(payload), eventKind(payload), now.Format(time.RFC3339), now.Format(time.RFC3339)}
+	event := Event{ID: fmt.Sprint(now.UnixNano()), Source: source, Title: title, Detail: safeDetail(payload), Kind: eventKind(payload), Time: now.Format(time.RFC3339), Received: now.Format(time.RFC3339)}
+	applyWebhookState(&event, payload)
 	s.mu.Lock()
 	s.events = append([]Event{event}, s.events...)
 	if len(s.events) > 2000 {
@@ -467,6 +473,7 @@ func main() {
 	pool.AppendCertsFromPEM(ca)
 	s := &server{client: &http.Client{Timeout: 8 * time.Second}, kube: &http.Client{Timeout: 8 * time.Second, Transport: &http.Transport{TLSClientConfig: &tls.Config{RootCAs: pool, MinVersion: tls.VersionTLS12}}}, prom: env("PROMETHEUS_URL", "http://kube-prometheus-stack-prometheus.monitoring.svc:9090"), kubeURL: env("KUBE_URL", "https://kubernetes.default.svc"), sa: strings.TrimSpace(string(sa)), token: token, hook: hook, events: []Event{}, wake: make(chan struct{}, 1), history: os.Getenv("HISTORY_FILE")}
 	s.loadHistory()
+	s.loadIntegrations()
 	s.live.changed = make(chan struct{})
 	go s.run(context.Background())
 	for _, path := range []string{"/api/v1/nodes", "/api/v1/events", "/apis/argoproj.io/v1alpha1/applications"} {

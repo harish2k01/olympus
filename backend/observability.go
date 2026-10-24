@@ -252,6 +252,27 @@ func (s *server) loadHistory() {
 		slog.Error("history_decode_failed")
 		s.events = []Event{}
 	}
+	for i := range s.events {
+		e := &s.events[i]
+		if e.State == "" {
+			e.State = "Activity"
+			if e.Source == "Kubernetes" {
+				e.State = "Observed"
+			}
+			if e.Source == "Prometheus" && strings.HasPrefix(e.ID, "{") {
+				e.ID = "alert:" + e.ID
+				e.Domain = "Prometheus"
+				e.State = "Unknown"
+				e.Evidence = "Legacy alert; awaiting a fresh observation"
+			}
+		}
+	}
+}
+func eventOrder(e Event) string {
+	if e.ResolvedAt != "" {
+		return e.ResolvedAt
+	}
+	return e.Time
 }
 func (s *server) saveHistory() error {
 	if s.history == "" {
@@ -260,11 +281,22 @@ func (s *server) saveHistory() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	cutoff := time.Now().Add(-30 * 24 * time.Hour)
-	sort.SliceStable(s.events, func(i, j int) bool { return s.events[i].Time > s.events[j].Time })
+	sort.SliceStable(s.events, func(i, j int) bool {
+		ai := s.events[i].Domain != "" && s.events[i].State != "Resolved"
+		aj := s.events[j].Domain != "" && s.events[j].State != "Resolved"
+		if ai != aj {
+			return ai
+		}
+		return s.events[i].Time > s.events[j].Time
+	})
 	kept := s.events[:0]
 	for _, event := range s.events {
-		stamp, _ := time.Parse(time.RFC3339, event.Time)
-		if stamp.After(cutoff) && len(kept) < 2000 && !(event.Source == "Test" && strings.HasPrefix(event.Title, "Olympus verification ")) {
+		stampValue := event.Time
+		if event.ResolvedAt != "" {
+			stampValue = event.ResolvedAt
+		}
+		stamp, _ := time.Parse(time.RFC3339, stampValue)
+		if (stamp.After(cutoff) || event.State == "Firing" || event.State == "Unknown" || event.State == "Pending") && len(kept) < 2000 && !(event.Source == "Test" && strings.HasPrefix(event.Title, "Olympus verification ")) {
 			kept = append(kept, event)
 		}
 	}
