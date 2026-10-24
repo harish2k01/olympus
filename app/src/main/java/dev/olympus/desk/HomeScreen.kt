@@ -131,7 +131,7 @@ private fun stamp(value:String)=try{DateTimeFormatter.ofPattern("dd MMM · HH:mm
   if(message.isNotEmpty()){Text(message,color=Mint,fontSize=12.sp);LaunchedEffect(message){delay(2200);message=""}}
   BoxWithConstraints(Modifier.weight(1f)){val viewport=maxHeight
   AnimatedContent(targetState=detail.ifEmpty{tab},modifier=Modifier.fillMaxSize(),transitionSpec={if(reducedMotion)EnterTransition.None togetherWith ExitTransition.None else fadeIn(tween(180)) togetherWith fadeOut(tween(120))},label="page"){page->
-   Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(bottom=10.dp)){
+   Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(bottom=if(page=="Home")0.dp else 10.dp)){
     when{
      page.startsWith("events-source:")->NotificationInbox(page.substringAfter(":")){selectedEvent=it;detail="event:${it.id}"}
      page.startsWith("node:")->NodeDetailScreen(page.substringAfter(":"))
@@ -143,7 +143,7 @@ private fun stamp(value:String)=try{DateTimeFormatter.ofPattern("dd MMM · HH:mm
      page=="Events"->NotificationInbox{selectedEvent=it;detail="event:${it.id}"}
      page=="Apps"->Apps{detail="app:$it"}
      page=="Monitors"->MonitorScreen()
-     else->WidgetGrid(widgets,wide,editing,reducedMotion,viewport,{editing=true},::save,{detail=it},{configuring=it})
+     else->WidgetGrid(widgets,wide,editing,reducedMotion,(viewport-10.dp).coerceAtLeast(0.dp),focusMode&&!dockShown&&!editing,{editing=true},::save,{detail=it},{configuring=it})
     }
    }
   }
@@ -181,14 +181,15 @@ private fun stamp(value:String)=try{DateTimeFormatter.ofPattern("dd MMM · HH:mm
   Text(when{LiveRepository.state.contains("Partial")->"Partial";live->"Live";LiveRepository.state=="Stale"->"Stale";else->"Offline"},color=if(healthy)Mint else Apricot,fontSize=11.sp)
  }
 }
-@Composable private fun WidgetGrid(items:List<DeskWidget>,wide:Boolean,editing:Boolean,reducedMotion:Boolean,viewport:androidx.compose.ui.unit.Dp,edit:()->Unit,save:(List<DeskWidget>)->Unit,open:(String)->Unit,configure:(DeskWidget)->Unit){
+@Composable private fun WidgetGrid(items:List<DeskWidget>,wide:Boolean,editing:Boolean,reducedMotion:Boolean,viewport:androidx.compose.ui.unit.Dp,fillViewport:Boolean,edit:()->Unit,save:(List<DeskWidget>)->Unit,open:(String)->Unit,configure:(DeskWidget)->Unit){
  val columns=if(wide)6 else 4
  val latest by rememberUpdatedState(items)
  var pitchX by remember{mutableFloatStateOf(100f)}
  var pitchY by remember{mutableFloatStateOf(100f)}
  val cells=DeskLayout.place(items,columns)
  val gapDp=LocalGridGap.current.dp
- val unit=if(wide)((viewport-gapDp*2)/3).coerceIn(92.dp,112.dp)else 112.dp
+ val rows=cells.maxOfOrNull{it.row+it.height}?:0
+ val unit=deskRowHeight(viewport.value,gapDp.value,rows,wide,fillViewport).dp
  if(items.isEmpty())DeskAction("Add widget",true){edit()}
  Layout(content={cells.forEach{cell->val widget=cell.widget
   var delta by remember(widget.id){mutableStateOf(Offset.Zero)}
