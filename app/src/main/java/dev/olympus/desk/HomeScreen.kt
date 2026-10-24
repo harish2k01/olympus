@@ -276,7 +276,7 @@ private fun destination(w:DeskWidget)=when(w.kind){"Clock"->"Home";"Monitors"->"
   }
   Text("TITLE",color=Muted,fontSize=10.sp);DeskSearch(label,{label=it.take(40)},"${kind} · default")
  }}
- androidx.compose.ui.window.Dialog(onDismissRequest=onDismiss,properties=androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth=false)){
+ androidx.compose.ui.window.Dialog(onDismissRequest=onDismiss,properties=androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth=false,decorFitsSystemWindows=false)){
   ImmersiveDialogWindow()
   Surface(color=Ink,contentColor=Paper,modifier=Modifier.fillMaxSize()){
    Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.displayCutout).padding(horizontal=16.dp)){

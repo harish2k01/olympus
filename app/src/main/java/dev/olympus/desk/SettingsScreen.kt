@@ -32,7 +32,7 @@ internal val LocalGridGap=staticCompositionLocalOf{10}
  val pair=remember{Pairing.read(context)}
  var url by remember{mutableStateOf(pair?.first?:"")};var token by remember{mutableStateOf("")};var error by remember{mutableStateOf("")}
  fun bool(key:String,value:Boolean,change:(Boolean)->Unit){prefs.edit().putBoolean(key,value).apply();change(value)}
- Dialog(onDismissRequest=close,properties=DialogProperties(usePlatformDefaultWidth=false)){
+ Dialog(onDismissRequest=close,properties=DialogProperties(usePlatformDefaultWidth=false,decorFitsSystemWindows=false)){
   ImmersiveDialogWindow()
   Surface(color=DeskColors.background,contentColor=DeskColors.text,modifier=Modifier.fillMaxSize()){
    Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.displayCutout).padding(horizontal=20.dp)){
