@@ -26,7 +26,7 @@ import dev.olympus.desk.data.*
 internal val LocalShowTests=staticCompositionLocalOf{false}
 internal val LocalGridGap=staticCompositionLocalOf{10}
 
-@Composable internal fun SettingsScreen(prefs:SharedPreferences,dimMode:Boolean,dim:Float,reduced:Boolean,awake:Boolean,tests:Boolean,dock:Int,gap:Int,setDimMode:(Boolean)->Unit,setDim:(Float)->Unit,setReduced:(Boolean)->Unit,setAwake:(Boolean)->Unit,setTests:(Boolean)->Unit,setDock:(Int)->Unit,setGap:(Int)->Unit,monitors:()->Unit,home:(String)->Unit,close:()->Unit){
+@Composable internal fun SettingsScreen(prefs:SharedPreferences,dimMode:Boolean,dim:Float,reduced:Boolean,awake:Boolean,tests:Boolean,dock:Int,gap:Int,setDimMode:(Boolean)->Unit,setDim:(Float)->Unit,setReduced:(Boolean)->Unit,setAwake:(Boolean)->Unit,setTests:(Boolean)->Unit,setDock:(Int)->Unit,setGap:(Int)->Unit,monitors:()->Unit,home:(String)->Unit,close:()->Unit,focus:Boolean,setFocus:(Boolean)->Unit){
  var section by remember{mutableStateOf("Display")}
  val context=LocalContext.current
  val pair=remember{Pairing.read(context)}
@@ -34,7 +34,7 @@ internal val LocalGridGap=staticCompositionLocalOf{10}
  fun bool(key:String,value:Boolean,change:(Boolean)->Unit){prefs.edit().putBoolean(key,value).apply();change(value)}
  Dialog(onDismissRequest=close,properties=DialogProperties(usePlatformDefaultWidth=false)){
   ImmersiveDialogWindow()
-  Surface(color=Color(0xFF14171E),modifier=Modifier.fillMaxSize()){
+  Surface(color=DeskColors.background,contentColor=DeskColors.text,modifier=Modifier.fillMaxSize()){
    Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.displayCutout).padding(horizontal=20.dp)){
     Row(Modifier.fillMaxWidth().height(52.dp),verticalAlignment=Alignment.CenterVertically){IconButton(onClick=close){LabGlyph("Back",Color(0xFFF5F3EF),24.dp)};Text("Settings",fontSize=21.sp);Spacer(Modifier.weight(1f));Text("v${BuildConfig.VERSION_NAME}",color=Color(0xFFBFC4D1),fontSize=11.sp)}
     CompactTabs(listOf("Display","Home","Events","Connection"),section,{section=it})
@@ -54,6 +54,8 @@ internal val LocalGridGap=staticCompositionLocalOf{10}
      SettingSwitch("Dim desk mode",dimMode){bool("deskMode",it,setDimMode)}
      if(dimMode){Text("App brightness · ${(dim*100).toInt()}%",fontSize=12.sp);Slider(value=dim,onValueChange={prefs.edit().putFloat("brightness",it).apply();setDim(it)},valueRange=.05f..1f)}
      SettingSwitch("Reduce motion",reduced){bool("reducedMotion",it,setReduced)}
+     SettingSwitch("Focus mode",focus){bool("focusMode",it,setFocus)}
+     Text("Hide header when idle · touch to reveal",color=DeskColors.muted,fontSize=11.sp)
      Text("Dock hide delay · ${dock}s",fontSize=12.sp);Slider(value=dock.toFloat(),onValueChange={val n=it.toInt();prefs.edit().putInt("dockSeconds",n).apply();setDock(n)},valueRange=2f..15f,steps=12)
       }
       "Home"->{
