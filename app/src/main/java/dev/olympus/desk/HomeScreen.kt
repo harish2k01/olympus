@@ -246,20 +246,25 @@ private fun destination(w:DeskWidget)=when(w.kind){"Clock"->"Home";"Monitors"->"
  var label by remember{mutableStateOf(initial?.label?:"")};var fields by remember{mutableStateOf(initial?.fields?:emptyList())}
  val targets=when(kind){"Service"->LiveRepository.integrations.map{it.name};"App"->LiveRepository.services.map{it.name};"Node"->LiveRepository.nodes.map{it.name};"Events"->listOf("All")+LiveRepository.events.map{it.source}.distinct();else->emptyList()}
  val preview=DeskWidget(initial?.id?:"preview",kind,target,width,height,label,fields,initial?.x?:-1,initial?.y?:-1)
- androidx.compose.ui.window.Dialog(onDismissRequest=onDismiss,properties=androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth=false)){
-  ImmersiveDialogWindow()
-  Column(Modifier.fillMaxSize().background(Ink).windowInsetsPadding(WindowInsets.displayCutout).padding(16.dp)){
-   Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(10.dp)){IconButton(onClick=onDismiss){LabGlyph("Back",Paper,23.dp)};Text(if(initial==null)"Add widget"else"Widget",color=Paper,fontSize=20.sp,modifier=Modifier.weight(1f));DeskAction(if(initial==null)"Add"else"Save",true,enabled=targets.isEmpty()||target in targets){add(preview.copy(id=initial?.id?:UUID.randomUUID().toString()))}}
-   Column(Modifier.verticalScroll(rememberScrollState()),verticalArrangement=Arrangement.spacedBy(12.dp)){
-    Box(Modifier.width((width*82).dp).height((height*108).dp).clip(RoundedCornerShape(20.dp)).background(widgetColor(kind)).padding(12.dp)){WidgetBody(preview,Modifier.fillMaxSize())}
+ @Composable fun widgetPreview(){Box(Modifier.width((width*82).dp).height((height*108).dp).clip(RoundedCornerShape(20.dp)).background(widgetColor(kind)).padding(12.dp)){WidgetBody(preview,Modifier.fillMaxSize())}}
+ @Composable fun widgetControls(){Column(verticalArrangement=Arrangement.spacedBy(12.dp)){
     DeskLayout.kinds.chunked(3).forEach{row->Row(horizontalArrangement=Arrangement.spacedBy(6.dp)){row.forEach{k->DeskAction(k,k==kind){kind=k;target="";fields=emptyList()}}}}
     Row(horizontalArrangement=Arrangement.spacedBy(10.dp),verticalAlignment=Alignment.CenterVertically){Text("Width $width",color=Paper);DeskAction("−"){width=(width-1).coerceAtLeast(if(maxWidth==6)1 else 2)};DeskAction("+"){width=(width+1).coerceAtMost(maxWidth)}}
     Row(horizontalArrangement=Arrangement.spacedBy(10.dp),verticalAlignment=Alignment.CenterVertically){Text("Height $height",color=Paper);DeskAction("−"){height=(height-1).coerceAtLeast(1)};DeskAction("+"){height=(height+1).coerceAtMost(4)}}
     if(kind=="Service"&&targets.isEmpty())Text("No service integrations connected",color=Muted)
-    targets.chunked(3).forEach{row->Row(horizontalArrangement=Arrangement.spacedBy(6.dp)){row.forEach{t->DeskAction(t,target==t){target=t;fields=emptyList()}}}}
+    targets.chunked(3).forEach{row->Row(Modifier.horizontalScroll(rememberScrollState()),horizontalArrangement=Arrangement.spacedBy(6.dp)){row.forEach{t->DeskAction(t,target==t){target=t;fields=emptyList()}}}}
     if(kind=="Service")LiveRepository.integrations.find{it.name==target}?.fields?.keys?.forEach{field->DeskAction((if(field in fields)"✓ "else"+ ")+field,field in fields){fields=if(field in fields)fields-field else fields+field}}
     DeskSearch(label,{label=it.take(40)},"Custom title")
-   }
+ }}
+ androidx.compose.ui.window.Dialog(onDismissRequest=onDismiss,properties=androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth=false)){
+  ImmersiveDialogWindow()
+  Column(Modifier.fillMaxSize().background(Ink).windowInsetsPadding(WindowInsets.displayCutout).padding(16.dp)){
+   Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(10.dp)){IconButton(onClick=onDismiss){LabGlyph("Back",Paper,23.dp)};Text(if(initial==null)"Add widget"else"Widget",color=Paper,fontSize=20.sp,modifier=Modifier.weight(1f));DeskAction(if(initial==null)"Add"else"Save",true,enabled=targets.isEmpty()||target in targets){add(preview.copy(id=initial?.id?:UUID.randomUUID().toString()))}}
+   if(wideWindow())Row(Modifier.weight(1f).padding(top=12.dp),horizontalArrangement=Arrangement.spacedBy(18.dp)){
+    Box(Modifier.weight(.42f).verticalScroll(rememberScrollState())){widgetPreview()}
+    Column(Modifier.weight(.58f).verticalScroll(rememberScrollState())){widgetControls()}
+   }else Column(Modifier.verticalScroll(rememberScrollState()),verticalArrangement=Arrangement.spacedBy(12.dp)){widgetPreview();widgetControls()}
+
   }
  }
 }

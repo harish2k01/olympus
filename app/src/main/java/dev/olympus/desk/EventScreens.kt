@@ -44,7 +44,7 @@ private fun groupingKey(e:LabEvent)=listOf(e.source,e.title,e.detail,e.kind)
  val activeIds=LiveRepository.active.map{it.id}.toSet()
  val events=(if(period=="Firing")LiveRepository.active else all.filter{it.id !in activeIds}).filter{e->(query.isBlank()||e.title.contains(query,true)||e.detail.contains(query,true)||e.source.contains(query,true))&&(source=="All"||e.source==source)&&(showTests||!(e.kind=="Test"||e.source=="Test"||e.title=="Test"))}
  if(events.isEmpty())Text("No notifications in this filter",color=EventMuted,modifier=Modifier.padding(20.dp))
- events.groupBy(::groupingKey).values.sortedByDescending{it.first().time}.forEach{group->NotificationRow(group.first(),group.size){open(group.first())}}
+ events.groupBy(::groupingKey).values.sortedByDescending{it.first().resolvedAt.ifBlank{it.first().time}}.forEach{group->NotificationRow(group.first(),group.size){open(group.first())}}
  if(period=="History"&&(total<0||next<total||historyError))DeskAction(if(loading)"Loading…"else if(historyError)"Retry history"else"Load history",enabled=!loading){more()}
  Text("History · 30 days / 2,000 records · active incidents retained",color=EventMuted,fontSize=10.sp,modifier=Modifier.padding(vertical=12.dp))
 }
@@ -52,7 +52,7 @@ private fun groupingKey(e:LabEvent)=listOf(e.source,e.title,e.detail,e.kind)
  Column(Modifier.fillMaxWidth().padding(top=8.dp).clip(RoundedCornerShape(18.dp)).background(Color(0xFF242832)).clickable(onClick=click).padding(12.dp)){
   Row(verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(9.dp)){
    AppIcon(eventIcon(event),event.source)
-   Column(Modifier.weight(1f)){Text(event.source,color=EventLilac,fontSize=11.sp);Text(localTime(event.received.ifBlank{event.time}),color=EventMuted,fontSize=10.sp)}
+   Column(Modifier.weight(1f)){Text(event.source,color=EventLilac,fontSize=11.sp);Text(localTime(event.resolvedAt.ifBlank{event.received.ifBlank{event.time}}),color=EventMuted,fontSize=10.sp)}
    Text((if(event.title=="Test")"Test"else event.state.ifBlank{event.kind}.replace("Unknown","Unconfirmed"))+(if(count>1)" · ×$count"else""),color=EventWarm,fontSize=11.sp)
   }
   Text(event.title,color=EventPaper,fontSize=15.sp,fontWeight=FontWeight.Medium,modifier=Modifier.padding(top=8.dp))
