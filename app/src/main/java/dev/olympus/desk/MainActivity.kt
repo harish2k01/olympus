@@ -20,7 +20,7 @@ import kotlinx.coroutines.*
 
 private val Ink=Color(0xFF14171E)
 private val Tile=Color(0xFF242832)
-private val Cobalt=Color(0xFF506CF4)
+private val Cobalt=Color(0xFF879BFF)
 private val Paper=Color(0xFFF5F3EF)
 class MainActivity:ComponentActivity(){
     override fun onCreate(savedInstanceState:Bundle?){
@@ -48,7 +48,7 @@ class MainActivity:ComponentActivity(){
         }}
         setContent {
             MaterialTheme(
-                colorScheme=darkColorScheme(primary=Cobalt,background=Ink,surface=Tile,onSurface=Paper,onBackground=Paper),
+                colorScheme=darkColorScheme(primary=Cobalt,background=Ink,surface=Tile,onSurface=Paper,onBackground=Paper,onPrimary=Ink,primaryContainer=Color(0xFF394C9B),onPrimaryContainer=Paper,secondary=Color(0xFFCDC5FF),onSecondary=Ink,secondaryContainer=Color(0xFF30384A),onSecondaryContainer=Paper,tertiary=Color(0xFFEDB48F),onTertiary=Ink,surfaceVariant=Color(0xFF30384A),onSurfaceVariant=Color(0xFFBFC4D1),outline=Color(0xFF535B6D),error=Color(0xFFEDB48F),onError=Ink),
                 typography=Typography(
                     bodyLarge=TextStyle(fontSize=13.sp),
                     bodyMedium=TextStyle(fontSize=12.sp),

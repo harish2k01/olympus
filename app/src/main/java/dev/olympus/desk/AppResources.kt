@@ -71,7 +71,7 @@ private fun shortKind(kind:String)=when(kind){"Application"->"APP";"Deployment"-
  val points=mutableMapOf<String,Pair<Int,Int>>();layers.forEach{(level,list)->list.forEachIndexed{index,node->points[node.id]=level*174 to (index*66+if(level==0)(maxRows-1)*33 else 0)}}
  var selected by remember{mutableStateOf<ResourceNode?>(null)}
  val width=((layers.keys.maxOrNull()?:0)+1)*174+16;val height=maxRows*66+24
- Box(Modifier.fillMaxWidth().height(if(androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp>650)250.dp else 330.dp).padding(top=6.dp).clip(RoundedCornerShape(18.dp)).background(Color(0xFF1B202A)).border(1.dp,Color(0xFF354052),RoundedCornerShape(18.dp))){
+ Box(Modifier.fillMaxWidth().height(if(wideWindow())250.dp else 330.dp).padding(top=6.dp).clip(RoundedCornerShape(18.dp)).background(Color(0xFF1B202A)).border(1.dp,Color(0xFF354052),RoundedCornerShape(18.dp))){
   Box(Modifier.fillMaxSize().horizontalScroll(rememberScrollState()).verticalScroll(rememberScrollState())){
    Box(Modifier.requiredSize(width.dp,height.dp).padding(12.dp)){
     Canvas(Modifier.matchParentSize()){

@@ -7,6 +7,8 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
@@ -32,16 +34,19 @@ private fun JSONArray?.objects()=(0 until (this?.length()?:0)).map{this!!.getJSO
 @Composable internal fun DetailTable(title:String,headers:List<String>,widths:List<Int>,rows:List<List<String>>){
  Text(title,color=DetailPaper,fontSize=15.sp,fontWeight=FontWeight.SemiBold,modifier=Modifier.padding(top=14.dp,bottom=8.dp))
  if(rows.isEmpty()){Text("None",color=DetailMuted,fontSize=12.sp);return}
+ BoxWithConstraints(Modifier.fillMaxWidth()){
+ val widthFactor=((maxWidth.value-16)/widths.sum()).coerceAtLeast(1f)
  Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).border(1.dp,Color(0xFF3A4150),RoundedCornerShape(16.dp)).horizontalScroll(rememberScrollState())){
   Row(Modifier.background(Color(0xFF30384A)).padding(horizontal=8.dp)){
-   headers.forEachIndexed{i,label->Text(label,color=DetailMuted,fontSize=11.sp,fontWeight=FontWeight.SemiBold,modifier=Modifier.width(widths[i].dp).padding(horizontal=10.dp,vertical=10.dp))}
+   headers.forEachIndexed{i,label->Text(label,color=DetailMuted,fontSize=11.sp,fontWeight=FontWeight.SemiBold,modifier=Modifier.width((widths[i]*widthFactor).dp).padding(horizontal=10.dp,vertical=10.dp))}
   }
   rows.forEachIndexed{index,row->
    Row(Modifier.background(if(index%2==0)DetailCard else Color(0xFF202630)).padding(horizontal=8.dp)){
-    row.forEachIndexed{i,value->Text(value.ifBlank{"—"},color=when{title=="Conditions"&&i==1->if((row[0]=="Ready"&&value=="True")||(row[0]!="Ready"&&value=="False"))Color(0xFFB4DFBE)else Color(0xFFEDB48F);value in listOf("Ready","Healthy")->Color(0xFFB4DFBE);value in listOf("Warning","Not ready","Critical")->Color(0xFFEDB48F);else->DetailPaper},fontSize=12.sp,lineHeight=18.sp,modifier=Modifier.width(widths[i].dp).padding(horizontal=10.dp,vertical=10.dp))}
+    row.forEachIndexed{i,value->Text(value.ifBlank{"—"},color=when{title=="Conditions"&&i==1->if((row[0]=="Ready"&&value=="True")||(row[0]!="Ready"&&value=="False"))Color(0xFFB4DFBE)else Color(0xFFEDB48F);value in listOf("Ready","Healthy")->Color(0xFFB4DFBE);value in listOf("Warning","Not ready","Critical")->Color(0xFFEDB48F);else->DetailPaper},fontSize=12.sp,lineHeight=18.sp,modifier=Modifier.width((widths[i]*widthFactor).dp).padding(horizontal=10.dp,vertical=10.dp))}
    }
    HorizontalDivider(color=Color(0xFF353C49),thickness=.5.dp)
   }
+ }
  }
 }
 
@@ -51,9 +56,13 @@ private fun JSONArray?.objects()=(0 until (this?.length()?:0)).map{this!!.getJSO
  LaunchedEffect(name){Pairing.read(context)?.let{LiveRepository.loadNode(it,name)}}
  val metric=LiveRepository.nodes.find{it.name==name}
  if(metric!=null){
-  Usage("CPU · ${metric.cores} cores",if(metric.available)metric.cpuPercent else null,Color(0xFF879BFF))
-  Usage("Memory · ${amount(metric.memoryUsedGiB*1073741824.0,"memory")} / ${amount(metric.memoryTotalGiB*1073741824.0,"memory")}",if(metric.available)metric.memoryUsedGiB/metric.memoryTotalGiB*100 else null,Color(0xFFCDC5FF))
+  val wide=wideWindow()
+  @Composable fun cpu(){Column(Modifier.fillMaxWidth().background(DetailCard,RoundedCornerShape(14.dp)).padding(horizontal=12.dp,vertical=10.dp)){Usage("CPU · ${metric.cores} cores",if(metric.available)metric.cpuPercent else null,Color(0xFF879BFF))}}
+  @Composable fun memory(){Column(Modifier.fillMaxWidth().background(DetailCard,RoundedCornerShape(14.dp)).padding(horizontal=12.dp,vertical=10.dp)){Usage("Memory · ${amount(metric.memoryUsedGiB*1073741824.0,"memory")} / ${amount(metric.memoryTotalGiB*1073741824.0,"memory")}",if(metric.available)metric.memoryUsedGiB/metric.memoryTotalGiB*100 else null,Color(0xFFCDC5FF))}}
+  if(wide)Row(Modifier.padding(top=6.dp,bottom=6.dp),horizontalArrangement=Arrangement.spacedBy(10.dp)){Box(Modifier.weight(1f)){cpu()};Box(Modifier.weight(1f)){memory()}}
+  else Column(Modifier.padding(top=6.dp,bottom=6.dp),verticalArrangement=Arrangement.spacedBy(8.dp)){cpu();memory()}
  }
+
  var section by rememberSaveable(name){mutableStateOf("Overview")}
  CompactTabs(listOf("Overview","Workloads","Metrics","Events"),section,{section=it}){scope.launch{Pairing.read(context)?.let{LiveRepository.loadNode(it,name)}}}
 

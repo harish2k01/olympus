@@ -8,6 +8,8 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalWindowInfo
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
@@ -26,7 +28,7 @@ internal val LocalReducedMotion=staticCompositionLocalOf{false}
   listOf("Home" to "⌂","Nodes" to "▤","Events" to "◷","Apps" to "⊞").forEach{(name,icon)->
    val scale by animateFloatAsState(if(selected==name)1.04f else 1f,label="dock_selection")
    Column(Modifier.weight(1f).clip(RoundedCornerShape(20.dp)).background(if(selected==name)Color(0xFF465DD1)else Color.Transparent).clickable{select(name)}.padding(vertical=7.dp),horizontalAlignment=Alignment.CenterHorizontally){
-    Text(icon,color=Color(0xFFF5F3EF),fontSize=(20*scale).sp)
+    LabGlyph(name,if(selected==name)Color.White else Color(0xFFBFC4D1),24.dp)
     Text(name,color=if(selected==name)Color.White else Color(0xFFBFC4D1),fontSize=10.sp)
    }
   }
@@ -55,3 +57,5 @@ internal val LocalReducedMotion=staticCompositionLocalOf{false}
   val mouth=Path().apply{moveTo(center.x-7.dp.toPx(),center.y+8.dp.toPx());quadraticTo(center.x,center.y+(if(happy)14f else if(connected)4f else 8f).dp.toPx(),center.x+7.dp.toPx(),center.y+8.dp.toPx())};drawPath(mouth,Color.White,style=androidx.compose.ui.graphics.drawscope.Stroke(1.5.dp.toPx()))
  }
 }
+
+@Composable internal fun wideWindow()=LocalWindowInfo.current.containerSize.width/LocalDensity.current.density>650

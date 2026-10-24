@@ -36,6 +36,7 @@ object Pairing {
 }
 
 data class ServiceState(val name:String,val namespace:String,val health:String,val sync:String,val cpu:Float?=null,val memory:Float?=null,val pods:Int=0,val ready:Int=0,val icon:String="",val url:String="",val resources:List<String> = emptyList())
+data class MonitorState(val id:String,val name:String,val type:String,val status:String,val responseMs:Float?)
 data class AttentionItem(val title:String,val target:String,val severity:String)
 object LiveRepository {
     var issues by mutableStateOf(emptyList<AttentionItem>());private set
@@ -64,6 +65,7 @@ object LiveRepository {
     var backupLast by mutableStateOf("");private set
     fun restore(frame:String){applyFrame(frame);lastSuccess=try{java.time.Instant.parse(time).toEpochMilli()}catch(_:Exception){0};state="Cached"}
     var backup by mutableStateOf<Boolean?>(null);private set
+    var monitors by mutableStateOf(emptyList<MonitorState>());private set
     var monitorsUp by mutableStateOf<Int?>(null);private set
     var monitorsTotal by mutableStateOf<Int?>(null);private set
     val cpuPercent:Float? get()=if(nodes.isEmpty()||nodes.any{!it.available})null else DemoRepository.cpuPercent(nodes)
@@ -85,6 +87,7 @@ object LiveRepository {
         val alerts=root.optJSONArray("issues")?:org.json.JSONArray();issues=(0 until alerts.length()).map{val item=alerts.getJSONObject(it);AttentionItem(item.getString("title"),item.getString("target"),item.getString("severity"))}
         backupVolumes=if(root.isNull("backupVolumes"))null else root.optInt("backupVolumes");backupRecorded=if(root.isNull("backupRecorded"))null else root.optInt("backupRecorded");backupLast=root.optString("backupLast")
         download=if(root.isNull("downloadMiB"))null else root.getDouble("downloadMiB").toFloat();backup=if(root.isNull("backupAvailable"))null else root.getBoolean("backupAvailable")
+        val checks=root.optJSONArray("monitors")?:org.json.JSONArray();monitors=(0 until checks.length()).map{val m=checks.getJSONObject(it);MonitorState(m.optString("id"),m.optString("name"),m.optString("type"),m.optString("status"),if(m.isNull("responseMs"))null else m.optDouble("responseMs").toFloat())}
         monitorsUp=if(root.isNull("monitorsUp"))null else root.getInt("monitorsUp");monitorsTotal=if(root.isNull("monitorsTotal"))null else root.getInt("monitorsTotal")
         val rows=org.json.JSONArray(payload.second);events=(0 until rows.length()).map{val e=rows.getJSONObject(it);LabEvent(e.getString("source"),e.getString("title"),e.getString("detail"),e.getString("kind"),e.getString("id"),e.optString("time"),e.optString("receivedAt"))}
         time=root.getString("time");lastSuccess=System.currentTimeMillis();state=if(root.getJSONArray("errors").length()>0)"Live · Partial data" else "Live"
