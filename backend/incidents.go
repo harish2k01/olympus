@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"math"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -111,14 +113,18 @@ func (s *server) collectIncidents(ctx context.Context, out *Snapshot) {
 		}
 	}
 	var alerts struct {
-		Data struct {
+		Status string `json:"status"`
+		Data   struct {
 			Alerts []struct {
-				Labels, Annotations map[string]string
-				ActiveAt, State     string
+				Labels, Annotations    map[string]string
+				ActiveAt, State, Value string
 			}
 		}
 	}
 	err := s.get(ctx, s.client, s.prom+"/api/v1/alerts", &alerts, false)
+	if err == nil && alerts.Status != "success" {
+		err = fmt.Errorf("invalid alert response")
+	}
 	complete["Prometheus"] = err == nil
 	if err == nil {
 		for _, a := range alerts.Data.Alerts {
@@ -128,6 +134,17 @@ func (s *server) collectIncidents(ctx context.Context, out *Snapshot) {
 			identity, _ := json.Marshal(a.Labels)
 			e := incident("alert:"+string(identity), "Prometheus", a.Labels["alertname"], a.Annotations["summary"], "Prometheus", a.Labels["namespace"]+"/"+a.Labels["pod"], now)
 			e.Kind = a.Labels["severity"]
+			enrichAlertContext(&e, a.Labels, s.podNodes)
+			e.CPULimit = s.podCPULimits[e.Namespace+"/"+e.Pod+"/"+e.Container]
+			if e.Title == "CPUThrottlingHigh" {
+				if n, err := strconv.ParseFloat(a.Value, 64); err == nil && !math.IsNaN(n) && !math.IsInf(n, 0) {
+					percent := n * 100
+					e.ThrottledPeriodsPercent = &percent
+				}
+			}
+			if text := a.Annotations["description"]; text != "" {
+				e.Detail = text
+			}
 			if a.ActiveAt != "" {
 				e.Time = a.ActiveAt
 			}
@@ -189,5 +206,28 @@ func applyWebhookState(e *Event, p map[string]any) {
 	}
 	if e.State == "Observed" && e.Evidence == "" {
 		e.Evidence = fmt.Sprintf("%s notification recorded; current recovery state is unconfirmed", e.Source)
+	}
+}
+
+// An exporter instance can identify the reporter; only explicit node labels or pod placement identify the affected node.
+func enrichAlertContext(e *Event, labels map[string]string, podNodes map[string]string) {
+	e.Namespace = labels["namespace"]
+	e.Pod = labels["pod"]
+	e.Container = labels["container"]
+	e.Node = labels["node"]
+	e.NodeSource = ""
+	if e.Node != "" {
+		e.NodeSource = "Alert label"
+	} else if e.Namespace != "" && e.Pod != "" {
+		e.Node = podNodes[e.Namespace+"/"+e.Pod]
+		if e.Node != "" {
+			e.NodeSource = "Observed pod placement"
+		}
+	}
+	e.Labels = map[string]string{}
+	for _, key := range []string{"alertname", "severity", "namespace", "pod", "container", "node", "instance", "job", "service", "endpoint"} {
+		if value := labels[key]; value != "" {
+			e.Labels[key] = value
+		}
 	}
 }

@@ -63,6 +63,8 @@ func (p pod) ready() bool {
 	return true
 }
 func (s *server) enrichApps(ctx context.Context, out *Snapshot) {
+	s.podNodes = map[string]string{}
+	s.podCPULimits = map[string]string{}
 	var routes struct {
 		Items []struct {
 			Metadata struct{ Name, Namespace string }
@@ -74,6 +76,12 @@ func (s *server) enrichApps(ctx context.Context, out *Snapshot) {
 	if s.get(ctx, s.kube, s.kubeURL+"/api/v1/pods", &pods, true) != nil {
 		out.Errors = append(out.Errors, "Workload data unavailable")
 		return
+	}
+	for _, p := range pods.Items {
+		s.podNodes[p.Metadata.Namespace+"/"+p.Metadata.Name] = p.Spec.NodeName
+		for _, c := range p.Spec.Containers {
+			s.podCPULimits[p.Metadata.Namespace+"/"+p.Metadata.Name+"/"+c.Name] = c.Resources.Limits["cpu"]
+		}
 	}
 	workloads, partial := s.workloadNodes(ctx)
 	if partial {

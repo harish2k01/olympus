@@ -31,19 +31,27 @@ type Node struct {
 	Pressure []string `json:"pressure"`
 }
 type Event struct {
-	ID         string `json:"id"`
-	Source     string `json:"source"`
-	Title      string `json:"title"`
-	Detail     string `json:"detail"`
-	Kind       string `json:"kind"`
-	Time       string `json:"time"`
-	Received   string `json:"receivedAt,omitempty"`
-	State      string `json:"state,omitempty"`
-	ResolvedAt string `json:"resolvedAt,omitempty"`
-	LastSeen   string `json:"lastSeen,omitempty"`
-	Domain     string `json:"domain,omitempty"`
-	Resource   string `json:"resource,omitempty"`
-	Evidence   string `json:"evidence,omitempty"`
+	CPULimit                string            `json:"cpuLimit,omitempty"`
+	ThrottledPeriodsPercent *float64          `json:"throttledPeriodsPercent,omitempty"`
+	Namespace               string            `json:"namespace,omitempty"`
+	Pod                     string            `json:"pod,omitempty"`
+	Container               string            `json:"container,omitempty"`
+	Node                    string            `json:"node,omitempty"`
+	NodeSource              string            `json:"nodeSource,omitempty"`
+	Labels                  map[string]string `json:"labels,omitempty"`
+	ID                      string            `json:"id"`
+	Source                  string            `json:"source"`
+	Title                   string            `json:"title"`
+	Detail                  string            `json:"detail"`
+	Kind                    string            `json:"kind"`
+	Time                    string            `json:"time"`
+	Received                string            `json:"receivedAt,omitempty"`
+	State                   string            `json:"state,omitempty"`
+	ResolvedAt              string            `json:"resolvedAt,omitempty"`
+	LastSeen                string            `json:"lastSeen,omitempty"`
+	Domain                  string            `json:"domain,omitempty"`
+	Resource                string            `json:"resource,omitempty"`
+	Evidence                string            `json:"evidence,omitempty"`
 }
 type App struct {
 	Name      string     `json:"name"`
@@ -59,22 +67,24 @@ type App struct {
 	Resources []Resource `json:"resources"`
 }
 type Snapshot struct {
-	Time            string             `json:"time"`
-	Nodes           []Node             `json:"nodes"`
-	Apps            []App              `json:"apps"`
-	MonitorsUp      *float64           `json:"monitorsUp"`
-	MonitorsTotal   *float64           `json:"monitorsTotal"`
-	Monitors        []Monitor          `json:"monitors"`
-	Active          []Event            `json:"active"`
-	Signals         map[string]bool    `json:"signals"`
-	Integrations    []IntegrationState `json:"integrations"`
-	Download        *float64           `json:"downloadMiB"`
-	BackupAvailable *bool              `json:"backupAvailable"`
-	BackupVolumes   *int               `json:"backupVolumes"`
-	BackupRecorded  *int               `json:"backupRecorded"`
-	BackupLast      string             `json:"backupLast"`
-	Errors          []string           `json:"errors"`
-	Issues          []Issue            `json:"issues"`
+	RecentActivity          map[string]int     `json:"recentActivity"`
+	RecentActivityWithTests map[string]int     `json:"recentActivityWithTests"`
+	Time                    string             `json:"time"`
+	Nodes                   []Node             `json:"nodes"`
+	Apps                    []App              `json:"apps"`
+	MonitorsUp              *float64           `json:"monitorsUp"`
+	MonitorsTotal           *float64           `json:"monitorsTotal"`
+	Monitors                []Monitor          `json:"monitors"`
+	Active                  []Event            `json:"active"`
+	Signals                 map[string]bool    `json:"signals"`
+	Integrations            []IntegrationState `json:"integrations"`
+	Download                *float64           `json:"downloadMiB"`
+	BackupAvailable         *bool              `json:"backupAvailable"`
+	BackupVolumes           *int               `json:"backupVolumes"`
+	BackupRecorded          *int               `json:"backupRecorded"`
+	BackupLast              string             `json:"backupLast"`
+	Errors                  []string           `json:"errors"`
+	Issues                  []Issue            `json:"issues"`
 }
 type vector struct {
 	Metric map[string]string `json:"metric"`
@@ -87,6 +97,8 @@ type server struct {
 	mu                                      sync.Mutex
 	events                                  []Event
 	integrations                            []IntegrationConfig
+	podNodes                                map[string]string
+	podCPULimits                            map[string]string
 	integrationCache                        []IntegrationState
 	integrationTime                         time.Time
 	cached                                  Snapshot
@@ -373,6 +385,7 @@ func (s *server) api(w http.ResponseWriter, r *http.Request) {
 	switch r.URL.Path {
 	case "/v1/snapshot":
 		out := s.snapshot(ctx)
+		s.activitySummary(&out, time.Now())
 		if len(out.Nodes) == 0 {
 			write(w, 503, out)
 			return

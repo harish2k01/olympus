@@ -174,6 +174,7 @@ func (s *server) run(ctx context.Context) {
 		collect, cancel := context.WithTimeout(context.WithValue(ctx, requestIDKey{}, collectionID), 14*time.Second)
 		snapshot := s.snapshot(collect)
 		events := s.feed(collect)
+		s.activitySummary(&snapshot, time.Now())
 		cancel()
 		s.live.publish(liveFrame{snapshot, events})
 		slog.Info("collection_complete", "collection_id", collectionID, "duration_ms", time.Since(start).Milliseconds(), "nodes", len(snapshot.Nodes), "apps", len(snapshot.Apps), "events", len(events), "partial", len(snapshot.Errors) > 0)
