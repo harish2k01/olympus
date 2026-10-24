@@ -53,18 +53,19 @@ type App struct {
 	Resources []Resource `json:"resources"`
 }
 type Snapshot struct {
-	Time            string   `json:"time"`
-	Nodes           []Node   `json:"nodes"`
-	Apps            []App    `json:"apps"`
-	MonitorsUp      *float64 `json:"monitorsUp"`
-	MonitorsTotal   *float64 `json:"monitorsTotal"`
-	Download        *float64 `json:"downloadMiB"`
-	BackupAvailable *bool    `json:"backupAvailable"`
-	BackupVolumes   *int     `json:"backupVolumes"`
-	BackupRecorded  *int     `json:"backupRecorded"`
-	BackupLast      string   `json:"backupLast"`
-	Errors          []string `json:"errors"`
-	Issues          []Issue  `json:"issues"`
+	Time            string    `json:"time"`
+	Nodes           []Node    `json:"nodes"`
+	Apps            []App     `json:"apps"`
+	MonitorsUp      *float64  `json:"monitorsUp"`
+	MonitorsTotal   *float64  `json:"monitorsTotal"`
+	Monitors        []Monitor `json:"monitors"`
+	Download        *float64  `json:"downloadMiB"`
+	BackupAvailable *bool     `json:"backupAvailable"`
+	BackupVolumes   *int      `json:"backupVolumes"`
+	BackupRecorded  *int      `json:"backupRecorded"`
+	BackupLast      string    `json:"backupLast"`
+	Errors          []string  `json:"errors"`
+	Issues          []Issue   `json:"issues"`
 }
 type vector struct {
 	Metric map[string]string `json:"metric"`
@@ -230,6 +231,7 @@ func (s *server) snapshot(ctx context.Context) Snapshot {
 	}
 	out.MonitorsUp = s.scalar(ctx, `sum(monitor_status == bool 1)`)
 	out.MonitorsTotal = s.scalar(ctx, `count(monitor_status)`)
+	out.Monitors = s.monitorList(ctx)
 	out.Download = s.scalar(ctx, `sum(qbittorrent_global_download_speed_bytes) / 1048576`)
 	var targets struct {
 		Items []struct{ Status struct{ Available bool } } `json:"items"`
@@ -268,6 +270,10 @@ func (s *server) snapshot(ctx context.Context) Snapshot {
 func (s *server) feed(ctx context.Context) []Event {
 	s.mu.Lock()
 	out := append([]Event{}, s.events...)
+	previous := map[string]Event{}
+	for _, e := range out {
+		previous[e.ID] = e
+	}
 	s.mu.Unlock()
 	var list struct {
 		Items []struct {
@@ -302,6 +308,37 @@ func (s *server) feed(ctx context.Context) []Event {
 			out = append(out, Event{string(identity), "Prometheus", a.Labels["alertname"], a.Annotations["summary"], a.Labels["severity"], a.ActiveAt, ""})
 		}
 	}
+	// Persist observed warning/alert changes as well as incoming webhooks.
+	unique := map[string]Event{}
+	for _, event := range out {
+		if old, ok := previous[event.ID]; ok {
+			event.Received = old.Received
+		}
+		if event.Received == "" {
+			event.Received = time.Now().UTC().Format(time.RFC3339)
+		}
+		unique[event.ID] = event
+	}
+	out = out[:0]
+	for _, event := range unique {
+		out = append(out, event)
+	}
+	sort.SliceStable(out, func(i, j int) bool { return out[i].Time > out[j].Time })
+	s.mu.Lock()
+	// A webhook may arrive while upstream queries run; never overwrite it.
+	for _, event := range s.events {
+		if _, exists := unique[event.ID]; !exists {
+			out = append(out, event)
+		}
+	}
+	s.events = append([]Event{}, out...)
+	s.mu.Unlock()
+	if err := s.saveHistory(); err != nil {
+		slog.Warn("feed_history_unavailable")
+	}
+	s.mu.Lock()
+	out = append([]Event{}, s.events...)
+	s.mu.Unlock()
 	sort.SliceStable(out, func(i, j int) bool { return out[i].Time > out[j].Time })
 	if len(out) > 100 {
 		out = out[:100]
@@ -338,6 +375,23 @@ func (s *server) api(w http.ResponseWriter, r *http.Request) {
 		write(w, 200, out)
 	case "/v1/events":
 		write(w, 200, s.feed(ctx))
+	case "/v1/events/history":
+		offset, _ := strconv.Atoi(r.URL.Query().Get("offset"))
+		if offset < 0 {
+			offset = 0
+		}
+		s.mu.Lock()
+		rows := append([]Event{}, s.events...)
+		s.mu.Unlock()
+		sort.SliceStable(rows, func(i, j int) bool { return rows[i].Time > rows[j].Time })
+		if offset > len(rows) {
+			offset = len(rows)
+		}
+		end := offset + 100
+		if end > len(rows) {
+			end = len(rows)
+		}
+		write(w, 200, map[string]any{"events": rows[offset:end], "total": len(rows), "next": end})
 	default:
 		if strings.HasPrefix(r.URL.Path, "/v1/apps/") {
 			s.appTree(w, r, ctx)
@@ -382,7 +436,7 @@ func (s *server) webhook(w http.ResponseWriter, r *http.Request) {
 		title = title[:500]
 	}
 	now := time.Now().UTC()
-	event := Event{fmt.Sprint(now.UnixNano()), source, title, safeDetail(payload), "Activity", now.Format(time.RFC3339), now.Format(time.RFC3339)}
+	event := Event{fmt.Sprint(now.UnixNano()), source, title, safeDetail(payload), eventKind(payload), now.Format(time.RFC3339), now.Format(time.RFC3339)}
 	s.mu.Lock()
 	s.events = append([]Event{event}, s.events...)
 	if len(s.events) > 2000 {

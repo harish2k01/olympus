@@ -173,7 +173,7 @@ func iconName(name string) string {
 // Retain a small allowlist of operational fields, never arbitrary payloads or secrets.
 func safeDetail(payload map[string]any) string {
 	out := map[string]any{}
-	for _, key := range []string{"eventType", "title", "message", "msg", "severity", "description"} {
+	for _, key := range []string{"eventType", "title", "message", "msg", "severity", "description", "text", "subject", "summary", "status", "finding_type", "source", "namespace", "resource_name"} {
 		if value, ok := payload[key].(string); ok {
 			if len(value) > 2000 {
 				value = value[:2000]
@@ -181,10 +181,10 @@ func safeDetail(payload map[string]any) string {
 			out[key] = value
 		}
 	}
-	for _, key := range []string{"movie", "series", "episode", "release", "monitor", "heartbeat"} {
+	for _, key := range []string{"movie", "series", "episode", "release", "monitor", "heartbeat", "subject"} {
 		if item, ok := payload[key].(map[string]any); ok {
 			fields := map[string]any{}
-			for _, field := range []string{"title", "name", "year", "seasonNumber", "episodeNumber", "status", "time", "duration", "ping", "quality"} {
+			for _, field := range []string{"title", "name", "year", "seasonNumber", "episodeNumber", "status", "time", "duration", "ping", "quality", "msg", "namespace", "subject_type", "resource_type"} {
 				if value, ok := item[field]; ok {
 					switch value.(type) {
 					case string, float64, bool:
@@ -307,4 +307,19 @@ func (s *server) nodeDetail(w http.ResponseWriter, r *http.Request, ctx context.
 	}
 	_ = s.get(ctx, s.kube, s.kubeURL+"/api/v1/events?fieldSelector="+url.QueryEscape("involvedObject.kind=Node,involvedObject.name="+name), &events, true)
 	write(w, 200, map[string]any{"node": node, "pods": pods.Items, "stats": stats, "cpuHistory": history.Data.Result, "allocations": allocations, "workloads": workloads, "events": events.Items})
+}
+
+func eventKind(payload map[string]any) string {
+	if kind, _ := payload["eventType"].(string); strings.EqualFold(kind, "test") {
+		return "Test"
+	}
+	if severity, _ := payload["severity"].(string); severity != "" {
+		return severity
+	}
+	if heartbeat, ok := payload["heartbeat"].(map[string]any); ok {
+		if n, ok := heartbeat["status"].(float64); ok && n == 0 {
+			return "Warning"
+		}
+	}
+	return "Activity"
 }

@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -259,10 +260,11 @@ func (s *server) saveHistory() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	cutoff := time.Now().Add(-30 * 24 * time.Hour)
+	sort.SliceStable(s.events, func(i, j int) bool { return s.events[i].Time > s.events[j].Time })
 	kept := s.events[:0]
 	for _, event := range s.events {
 		stamp, _ := time.Parse(time.RFC3339, event.Time)
-		if stamp.After(cutoff) && len(kept) < 2000 {
+		if stamp.After(cutoff) && len(kept) < 2000 && !(event.Source == "Test" && strings.HasPrefix(event.Title, "Olympus verification ")) {
 			kept = append(kept, event)
 		}
 	}
