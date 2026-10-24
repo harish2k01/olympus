@@ -61,7 +61,17 @@ private fun stamp(value:String)=try{DateTimeFormatter.ofPattern("dd MMM · HH:mm
 @Composable private fun ClockWidget(widgetSize:Int,modifier:Modifier,title:String=""){
  var now by remember{mutableStateOf(java.time.ZonedDateTime.now())}
  LaunchedEffect(Unit){while(isActive){now=java.time.ZonedDateTime.now();delay(30000)}}
- Column(modifier.fillMaxWidth(),verticalArrangement=Arrangement.SpaceBetween){
+ BoxWithConstraints(modifier.fillMaxWidth()){
+ if(widgetSize==2&&maxWidth>maxHeight*1.1f){
+  Row(Modifier.fillMaxSize(),horizontalArrangement=Arrangement.spacedBy(16.dp),verticalAlignment=Alignment.CenterVertically){
+   Column(Modifier.weight(1f).fillMaxHeight(),verticalArrangement=Arrangement.SpaceBetween){
+    Text(title.ifBlank{"OLYMPUS / ${now.dayOfWeek.name}"},color=Color.White,fontSize=10.sp,maxLines=1)
+    Column{Text(now.format(DateTimeFormatter.ofPattern("HH:mm")),color=Color.White,fontSize=47.sp,fontWeight=FontWeight.Light);Text(now.format(DateTimeFormatter.ofPattern("d MMMM yyyy")),color=Color.White,fontSize=12.sp)}
+    Text("${when(now.hour){in 5..11->"A good morning";in 12..16->"A good afternoon";in 17..22->"A good evening";else->"A quiet night"}}\nfor your lab.",color=Color.White,fontSize=18.sp,lineHeight=23.sp,fontWeight=FontWeight.SemiBold)
+   }
+   ClusterMascot()
+  }
+ }else Column(Modifier.fillMaxSize(),verticalArrangement=Arrangement.SpaceBetween){
   if(widgetSize>0)Text(title.ifBlank{"OLYMPUS / ${now.dayOfWeek.name}"},color=Color.White,fontSize=9.sp,letterSpacing=1.sp,maxLines=1)
   Column{
    Text(now.format(DateTimeFormatter.ofPattern("HH:mm")),color=Color.White,fontSize=if(widgetSize==0)28.sp else 45.sp,fontWeight=FontWeight.Light)
@@ -74,6 +84,7 @@ private fun stamp(value:String)=try{DateTimeFormatter.ofPattern("dd MMM · HH:mm
 
   }
  }
+}
 }
 
 @Composable internal fun HomeApp(){
@@ -214,13 +225,13 @@ private fun stamp(value:String)=try{DateTimeFormatter.ofPattern("dd MMM · HH:mm
  }
 }
 private fun destination(w:DeskWidget)=when(w.kind){"Clock"->"Home";"Monitors"->"Monitors";"Node"->"node:${w.target}";"App"->"app:${w.target}";"Backups"->"Backups";"Events"->if(w.target.isBlank()||w.target=="All")"Events"else"events-source:${w.target}";"Attention"->"Attention";"GitOps"->"Apps";"Downloads"->"app:qbittorrent";else->"Nodes"}
-@Composable private fun WidgetBody(w:DeskWidget,modifier:Modifier){if(w.kind=="Clock"){ClockWidget(w.size,modifier,w.label);return};val fg=if(w.kind in listOf("GitOps","Attention","Monitors"))Color(0xFF29233D)else Paper;val secondary=if(fg!=Paper)fg.copy(alpha=.8f)else Muted;Column(modifier.fillMaxWidth(),verticalArrangement=Arrangement.spacedBy(if(w.size==0)4.dp else 8.dp)){
+@Composable private fun WidgetBody(w:DeskWidget,modifier:Modifier){if(w.kind=="Clock"){ClockWidget(w.size,modifier,w.label);return};val fg=if(w.kind in listOf("GitOps","Attention","Monitors"))Color(0xFF29233D)else Paper;val secondary=if(fg!=Paper)fg.copy(alpha=.8f)else Muted;Column(modifier.fillMaxWidth(),verticalArrangement=if(w.size==0)Arrangement.spacedBy(4.dp)else Arrangement.SpaceBetween){
  val app=LiveRepository.services.find{it.name==w.target};val node=LiveRepository.nodes.find{it.name==w.target}
  Row(verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(8.dp)){if(w.kind=="App"&&w.size>0)AppIcon(app?.icon?:"",w.target);Text(w.label.ifBlank{if(w.kind=="App"||w.kind=="Node")w.target else w.kind},color=secondary,fontSize=if(w.size==0)10.sp else 12.sp,maxLines=1,overflow=TextOverflow.Ellipsis,modifier=Modifier.weight(1f));if(w.kind=="GitOps")LabGlyph("GitOps",fg,19.dp)}
  val missing=when(w.kind){"CPU"->LiveRepository.cpuPercent==null;"Memory"->LiveRepository.memoryPercent==null;"Downloads"->LiveRepository.download==null;"Monitors"->LiveRepository.monitorsTotal==null;"Backups"->LiveRepository.backup==null;"App"->app==null;"Node"->node==null;else->LiveRepository.lastSuccess==0L}
  if(w.size>0&&(missing||!LiveRepository.state.startsWith("Live")))Text(if(missing)"Unavailable"else"Last known data",color=if(fg==Paper)Apricot else fg,fontSize=9.sp)
  val value=when(w.kind){"CPU"->"${LiveRepository.cpuPercent.fmt()}%";"Memory"->"${LiveRepository.memoryPercent.fmt()}%";"Nodes"->"${LiveRepository.nodes.count{it.ready}} / ${LiveRepository.nodes.size}";"Monitors"->"${LiveRepository.monitorsUp?:"—"} / ${LiveRepository.monitorsTotal?:"—"}";"GitOps"->"${LiveRepository.services.count{it.health=="Healthy"&&it.sync=="Synced"}} / ${LiveRepository.services.size}";"Downloads"->"${LiveRepository.download.fmt()} MiB/s";"Backups"->when(LiveRepository.backup){true->"Available";false->"Unavailable";null->"Unknown"};"Attention"->if(LiveRepository.lastSuccess==0L)"Unavailable" else "${LiveRepository.issues.size} issues";"Events"->"${LiveRepository.events.size} events";"App"->app?.health?:"Unavailable";"Node"->if(node==null)"Unavailable" else if(node.ready)"Ready" else "Not ready";else->"—"}
- Text(value,color=fg,fontWeight=FontWeight.SemiBold,fontSize=if(w.size==0)18.sp else 25.sp,maxLines=1,overflow=TextOverflow.Ellipsis)
+ Text(value,color=fg,fontWeight=FontWeight.SemiBold,fontSize=if(w.size==0)18.sp else if(value.length>10)22.sp else 32.sp,maxLines=1,overflow=TextOverflow.Ellipsis)
  if(w.size>0){when(w.kind){
   "CPU"->{Text("${LiveRepository.totalCores} cores",color=secondary,fontSize=11.sp);Spark(LiveRepository.history["cpu"]?:emptyList(),Cobalt)}
   "Memory"->{Text("${LiveRepository.usedMemory.fmt()} / ${LiveRepository.totalMemory.fmt()} GiB",color=secondary,fontSize=11.sp);Spark(LiveRepository.history["memory"]?:emptyList(),Lilac)}

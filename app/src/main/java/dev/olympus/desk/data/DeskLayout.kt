@@ -16,8 +16,8 @@ object DeskLayout {
     fun place(items:List<DeskWidget>,columns:Int):List<Cell>{
         val occupied=mutableSetOf<Pair<Int,Int>>()
         return items.map{item->
-            val width=if(item.kind=="Clock")1 else span(item,columns)
-            val height=if(item.kind=="Clock"&&item.size==2)4 else when(item.size){0->1;1->2;else->3}
+            val width=if(item.kind=="Clock"&&!(columns==2&&item.size==2))1 else span(item,columns)
+            val height=if(item.kind=="Clock"&&item.size==2){if(columns>2)4 else 2} else when(item.size){0->1;1->2;else->3}
             var row=0;var column=0
             while(true){val free=column+width<=columns&&(row until row+height).all{y->(column until column+width).all{x->(x to y) !in occupied}};if(free)break;column++;if(column>=columns){column=0;row++}}
             for(y in row until row+height)for(x in column until column+width)occupied.add(x to y)
