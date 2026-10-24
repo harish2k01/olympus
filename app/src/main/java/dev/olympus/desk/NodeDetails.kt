@@ -30,15 +30,15 @@ private fun percentage(row:JSONObject,key:String)=if(row.isNull(key))""else" (${
 private fun JSONArray?.objects()=(0 until (this?.length()?:0)).map{this!!.getJSONObject(it)}
 
 @Composable internal fun DetailTable(title:String,headers:List<String>,widths:List<Int>,rows:List<List<String>>){
- Text(title,color=DetailPaper,fontSize=17.sp,fontWeight=FontWeight.SemiBold,modifier=Modifier.padding(top=22.dp,bottom=10.dp))
+ Text(title,color=DetailPaper,fontSize=15.sp,fontWeight=FontWeight.SemiBold,modifier=Modifier.padding(top=14.dp,bottom=8.dp))
  if(rows.isEmpty()){Text("None",color=DetailMuted,fontSize=12.sp);return}
  Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).border(1.dp,Color(0xFF3A4150),RoundedCornerShape(16.dp)).horizontalScroll(rememberScrollState())){
   Row(Modifier.background(Color(0xFF30384A)).padding(horizontal=8.dp)){
-   headers.forEachIndexed{i,label->Text(label,color=DetailMuted,fontSize=11.sp,fontWeight=FontWeight.SemiBold,modifier=Modifier.width(widths[i].dp).padding(horizontal=10.dp,vertical=13.dp))}
+   headers.forEachIndexed{i,label->Text(label,color=DetailMuted,fontSize=11.sp,fontWeight=FontWeight.SemiBold,modifier=Modifier.width(widths[i].dp).padding(horizontal=10.dp,vertical=10.dp))}
   }
   rows.forEachIndexed{index,row->
    Row(Modifier.background(if(index%2==0)DetailCard else Color(0xFF202630)).padding(horizontal=8.dp)){
-    row.forEachIndexed{i,value->Text(value.ifBlank{"—"},color=when{title=="Conditions"&&i==1->if((row[0]=="Ready"&&value=="True")||(row[0]!="Ready"&&value=="False"))Color(0xFFB4DFBE)else Color(0xFFEDB48F);value in listOf("Ready","Healthy")->Color(0xFFB4DFBE);value in listOf("Warning","Not ready","Critical")->Color(0xFFEDB48F);else->DetailPaper},fontSize=12.sp,lineHeight=18.sp,modifier=Modifier.width(widths[i].dp).padding(horizontal=10.dp,vertical=13.dp))}
+    row.forEachIndexed{i,value->Text(value.ifBlank{"—"},color=when{title=="Conditions"&&i==1->if((row[0]=="Ready"&&value=="True")||(row[0]!="Ready"&&value=="False"))Color(0xFFB4DFBE)else Color(0xFFEDB48F);value in listOf("Ready","Healthy")->Color(0xFFB4DFBE);value in listOf("Warning","Not ready","Critical")->Color(0xFFEDB48F);else->DetailPaper},fontSize=12.sp,lineHeight=18.sp,modifier=Modifier.width(widths[i].dp).padding(horizontal=10.dp,vertical=10.dp))}
    }
    HorizontalDivider(color=Color(0xFF353C49),thickness=.5.dp)
   }
@@ -55,7 +55,8 @@ private fun JSONArray?.objects()=(0 until (this?.length()?:0)).map{this!!.getJSO
   Usage("Memory · ${amount(metric.memoryUsedGiB*1073741824.0,"memory")} / ${amount(metric.memoryTotalGiB*1073741824.0,"memory")}",if(metric.available)metric.memoryUsedGiB/metric.memoryTotalGiB*100 else null,Color(0xFFCDC5FF))
  }
  var section by rememberSaveable(name){mutableStateOf("Overview")}
- Row(Modifier.fillMaxWidth().padding(top=14.dp).horizontalScroll(rememberScrollState())){listOf("Overview","Workloads","Metrics","Events").forEach{label->FilterChip(selected=section==label,onClick={section=label},label={Text(label)},modifier=Modifier.padding(end=8.dp))};TextButton(onClick={scope.launch{Pairing.read(context)?.let{LiveRepository.loadNode(it,name)}}}){Text("Refresh",color=Color(0xFF879BFF))}}
+ CompactTabs(listOf("Overview","Workloads","Metrics","Events"),section,{section=it}){scope.launch{Pairing.read(context)?.let{LiveRepository.loadNode(it,name)}}}
+
  val details=LiveRepository.nodeDetails
  if(details==null){Text(if(LiveRepository.nodeError)"Node details unavailable"else"Loading…",color=DetailMuted,modifier=Modifier.padding(20.dp));return}
  val node=details.getJSONObject("node");val status=node.getJSONObject("Status");val spec=node.getJSONObject("Spec")

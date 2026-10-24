@@ -28,9 +28,9 @@ private fun sourceApp(source:String)=LiveRepository.services.find{it.name.replac
 private fun eventIcon(event:LabEvent)=sourceApp(event.source)?.icon?.ifBlank{null}?:when(event.source){"Kubernetes"->"https://raw.githubusercontent.com/selfhst/icons/main/png/kubernetes.png";"Prometheus"->"https://raw.githubusercontent.com/selfhst/icons/main/png/prometheus.png";else->""}
 private fun groupingKey(e:LabEvent)=listOf(e.source,e.title,e.detail,e.kind)
 
-@Composable internal fun NotificationInbox(open:(LabEvent)->Unit){
- var source by rememberSaveable{mutableStateOf("All")}
- Text("Events",color=EventPaper,fontSize=24.sp,fontWeight=FontWeight.SemiBold,modifier=Modifier.padding(vertical=12.dp))
+@Composable internal fun NotificationInbox(initialSource:String="All",open:(LabEvent)->Unit){
+ var source by rememberSaveable(initialSource){mutableStateOf(initialSource)}
+
  Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())){(listOf("All")+LiveRepository.events.map{it.source}.distinct().sorted()).forEach{label->FilterChip(selected=source==label,onClick={source=label},label={Text(label)},modifier=Modifier.padding(end=7.dp))}}
  val events=LiveRepository.events.filter{source=="All"||it.source==source}
  if(events.isEmpty())Text("No events",color=EventMuted,modifier=Modifier.padding(20.dp))
@@ -52,7 +52,7 @@ private fun groupingKey(e:LabEvent)=listOf(e.source,e.title,e.detail,e.kind)
 @Composable internal fun NotificationDetail(event:LabEvent){
  val context=LocalContext.current
  Row(Modifier.padding(top=12.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(10.dp)){AppIcon(eventIcon(event),event.source);Text(event.source,color=EventLilac,fontSize=12.sp);Text(event.kind,color=EventWarm,fontSize=12.sp)}
- Text(event.title,color=EventPaper,fontSize=23.sp,lineHeight=29.sp,fontWeight=FontWeight.SemiBold,modifier=Modifier.padding(vertical=14.dp))
+ Text(event.title,color=EventPaper,fontSize=23.sp,lineHeight=29.sp,fontWeight=FontWeight.SemiBold,modifier=Modifier.padding(vertical=8.dp))
  val data=try{JSONObject(event.detail)}catch(_:Exception){null}
  val rows=mutableListOf<List<String>>()
  if(event.received.isNotEmpty()){rows.add(listOf("Received",localTime(event.received)));if(event.time!=event.received)rows.add(listOf("Event time",localTime(event.time)))}else rows.add(listOf("Event time",localTime(event.time)))

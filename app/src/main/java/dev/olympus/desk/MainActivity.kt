@@ -13,6 +13,8 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.material3.*
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.unit.sp
 import dev.olympus.desk.data.*
 import kotlinx.coroutines.*
 
@@ -45,7 +47,16 @@ class MainActivity:ComponentActivity(){
             }
         }}
         setContent {
-            MaterialTheme(colorScheme=darkColorScheme(primary=Cobalt,background=Ink,surface=Tile,onSurface=Paper,onBackground=Paper)) { HomeApp() }
+            MaterialTheme(
+                colorScheme=darkColorScheme(primary=Cobalt,background=Ink,surface=Tile,onSurface=Paper,onBackground=Paper),
+                typography=Typography(
+                    bodyLarge=TextStyle(fontSize=13.sp),
+                    bodyMedium=TextStyle(fontSize=12.sp),
+                    bodySmall=TextStyle(fontSize=11.sp),
+                    labelLarge=TextStyle(fontSize=12.sp,lineHeight=16.sp),
+                    labelMedium=TextStyle(fontSize=11.sp,lineHeight=14.sp)
+                )
+            ) { HomeApp() }
         }
     }
     private fun immersive(){WindowCompat.getInsetsController(window,window.decorView).apply{systemBarsBehavior=WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE;hide(WindowInsetsCompat.Type.systemBars())}}
