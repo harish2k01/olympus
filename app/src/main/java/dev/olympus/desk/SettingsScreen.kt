@@ -83,15 +83,20 @@ internal val LocalGridGap=staticCompositionLocalOf{10}
 
 @Composable internal fun MonitorScreen(){
  var search by remember{mutableStateOf("")};var status by remember{mutableStateOf("All")}
- DeskSearch(search,{search=it},"Search monitors")
- CompactTabs(listOf("All","Up","Down","Pending","Maintenance"),status,{status=it})
+ if(wideWindow())Row(verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(10.dp)){Box(Modifier.weight(1f)){DeskSearch(search,{search=it},"Search monitors")};Box(Modifier.width(350.dp)){CompactTabs(listOf("All","Up","Down","Pending","Maintenance"),status,{status=it})}}
+ else {DeskSearch(search,{search=it},"Search monitors");CompactTabs(listOf("All","Up","Down","Pending","Maintenance"),status,{status=it})}
  val rows=LiveRepository.monitors.filter{it.name.contains(search,true)&&(status=="All"||it.status==status)}
- if(LiveRepository.monitors.isEmpty())Text("Monitor readings unavailable",modifier=Modifier.padding(16.dp),color=Color(0xFFBFC4D1))
- rows.forEach{m->Row(Modifier.fillMaxWidth().padding(vertical=4.dp).background(Color(0xFF242832),RoundedCornerShape(14.dp)).padding(14.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(12.dp)){
-  Box(Modifier.size(7.dp).background(if(m.status=="Up")Color(0xFFB4DFBE)else Color(0xFFEDB48F),RoundedCornerShape(4.dp)))
-  Column(Modifier.weight(1f)){Text(m.name,fontSize=14.sp);Text("${m.type} · ${m.status}",color=Color(0xFFBFC4D1),fontSize=11.sp)}
-  Text(m.responseMs?.let{"${it.toInt()} ms"}?:"—",color=Color(0xFFCDC5FF),fontSize=13.sp)
+ if(LiveRepository.monitors.isEmpty())Text("Monitor readings unavailable",modifier=Modifier.padding(16.dp),color=DeskColors.muted)
+ val columns=if(wideWindow())2 else 1
+ rows.chunked(columns).forEach{group->Row(Modifier.fillMaxWidth().padding(vertical=4.dp),horizontalArrangement=Arrangement.spacedBy(10.dp)){
+  group.forEach{m->Row(Modifier.weight(1f).background(DeskColors.surface,RoundedCornerShape(14.dp)).padding(10.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(10.dp)){
+   Box(Modifier.size(7.dp).background(if(m.status=="Up")DeskColors.green else DeskColors.apricot,RoundedCornerShape(4.dp)))
+   Column(Modifier.weight(1f)){Text(m.name,fontSize=13.sp,maxLines=1);Text("${m.type} · ${m.status}",color=DeskColors.muted,fontSize=11.sp)}
+   Text(m.responseMs?.let{"${it.toInt()} ms"}?:"—",color=DeskColors.lilac,fontSize=13.sp)
+  }}
+  if(group.size<columns)Spacer(Modifier.weight(1f))
  }}
+
 }
 
 @Composable internal fun ImmersiveDialogWindow(){
