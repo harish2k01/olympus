@@ -23,7 +23,12 @@ func (s *server) reconcileIncidents(current []Event, complete map[string]bool, n
 			continue
 		}
 		if next, ok := incoming[old.ID]; ok {
-			if old.State != "Resolved" {
+			if old.State == "Resolved" {
+				archived := old
+				archived.ID = old.ID + ":resolved:" + old.ResolvedAt
+				archived.Domain = ""
+				s.events = append(s.events, archived)
+			} else {
 				next.Time = old.Time
 				next.Received = old.Received
 			}

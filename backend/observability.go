@@ -287,7 +287,7 @@ func (s *server) saveHistory() error {
 		if ai != aj {
 			return ai
 		}
-		return s.events[i].Time > s.events[j].Time
+		return eventOrder(s.events[i]) > eventOrder(s.events[j])
 	})
 	kept := s.events[:0]
 	for _, event := range s.events {

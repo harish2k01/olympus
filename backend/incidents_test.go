@@ -26,6 +26,9 @@ func TestIncidentRecoveryRequiresAuthoritativeResource(t *testing.T) {
 	if len(active) != 1 || active[0].ResolvedAt != "" || active[0].Time != "2026-10-24T00:04:00Z" {
 		t.Fatal("reopened incident must have new episode time")
 	}
+	if len(s.events) != 2 || s.events[1].State != "Resolved" {
+		t.Fatal("reopening must preserve resolved episode in history")
+	}
 }
 func TestIntegrationCountersAndUnavailableFields(t *testing.T) {
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
