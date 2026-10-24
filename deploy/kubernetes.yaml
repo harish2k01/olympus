@@ -68,10 +68,11 @@ spec:
         seccompProfile: {type: RuntimeDefault}
       containers:
         - name: api
-          image: ghcr.io/harish2k01/olympus-backend:d13c81803d37663ad4eb350013627b2cc3e60056
+          image: ghcr.io/harish2k01/olympus-backend:4d6db02dc6122db534dba2d07e91518fd0c0ce72
           ports: [{name: http, containerPort: 8080}]
           envFrom:
             - secretRef: {name: olympus-auth}
+            - secretRef: {name: olympus-integrations, optional: true}
           env:
             - {name: HISTORY_FILE, value: /data/events.json}
           volumeMounts:

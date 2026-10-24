@@ -37,8 +37,13 @@ object Pairing {
 
 data class ServiceState(val name:String,val namespace:String,val health:String,val sync:String,val cpu:Float?=null,val memory:Float?=null,val pods:Int=0,val ready:Int=0,val icon:String="",val url:String="",val resources:List<String> = emptyList())
 data class MonitorState(val id:String,val name:String,val type:String,val status:String,val responseMs:Float?)
+data class ServiceWidgetState(val name:String,val kind:String,val fields:Map<String,Float?>,val time:String,val error:String)
 data class AttentionItem(val title:String,val target:String,val severity:String)
 object LiveRepository {
+    var active by mutableStateOf(emptyList<LabEvent>());private set
+    var integrations by mutableStateOf(emptyList<ServiceWidgetState>());private set
+    var signals by mutableStateOf(mapOf<String,Boolean>());private set
+    fun event(e:JSONObject)=LabEvent(e.getString("source"),e.getString("title"),e.optString("detail"),e.optString("kind"),e.getString("id"),e.optString("time"),e.optString("receivedAt"),e.optString("state","Observed"),e.optString("resolvedAt"),e.optString("lastSeen"),e.optString("evidence"),e.optString("resource"))
     var issues by mutableStateOf(emptyList<AttentionItem>());private set
     var history by mutableStateOf(mapOf<String,List<Float>>());private set
     var nodeDetails by mutableStateOf<JSONObject?>(null);private set
@@ -84,12 +89,15 @@ object LiveRepository {
         val newSample=root.getString("time")!=time
         nodes=(0 until list.length()).map{val n=list.getJSONObject(it);NodeMetric(n.getString("name"),n.getString("role"),n.getInt("cores"),n.optDouble("cpuPercent",0.0).toFloat(),n.optDouble("memoryUsedGiB",0.0).toFloat(),n.optDouble("memoryTotalGiB",0.0).toFloat(),!n.isNull("cpuPercent")&&!n.isNull("memoryUsedGiB")&&!n.isNull("memoryTotalGiB"),n.optBoolean("ready"))}
         val apps=root.getJSONArray("apps");services=(0 until apps.length()).map{val a=apps.getJSONObject(it);ServiceState(a.getString("name"),a.getString("namespace"),a.getString("health"),a.getString("sync"),if(a.isNull("cpuCores"))null else a.getDouble("cpuCores").toFloat(),if(a.isNull("memoryMiB"))null else a.getDouble("memoryMiB").toFloat(),a.optInt("pods"),a.optInt("ready"),a.optString("icon"),a.optString("url"),(a.optJSONArray("resources")?:org.json.JSONArray()).let{rs->(0 until rs.length()).map{rs.getJSONObject(it).optString("kind")}})}
+        val ongoing=root.optJSONArray("active")?:org.json.JSONArray();active=(0 until ongoing.length()).map{event(ongoing.getJSONObject(it))}
+        val sources=root.optJSONObject("signals")?:JSONObject();signals=sources.keys().asSequence().filter{!it.startsWith("resource:")}.associateWith{sources.optBoolean(it)}
+        val integrationsJSON=root.optJSONArray("integrations")?:org.json.JSONArray();integrations=(0 until integrationsJSON.length()).map{val i=integrationsJSON.getJSONObject(it);val f=i.optJSONObject("fields")?:JSONObject();ServiceWidgetState(i.getString("name"),i.getString("kind"),f.keys().asSequence().associateWith{key->if(f.isNull(key))null else f.optDouble(key).toFloat()},i.optString("time"),i.optString("error"))}
         val alerts=root.optJSONArray("issues")?:org.json.JSONArray();issues=(0 until alerts.length()).map{val item=alerts.getJSONObject(it);AttentionItem(item.getString("title"),item.getString("target"),item.getString("severity"))}
         backupVolumes=if(root.isNull("backupVolumes"))null else root.optInt("backupVolumes");backupRecorded=if(root.isNull("backupRecorded"))null else root.optInt("backupRecorded");backupLast=root.optString("backupLast")
         download=if(root.isNull("downloadMiB"))null else root.getDouble("downloadMiB").toFloat();backup=if(root.isNull("backupAvailable"))null else root.getBoolean("backupAvailable")
         val checks=root.optJSONArray("monitors")?:org.json.JSONArray();monitors=(0 until checks.length()).map{val m=checks.getJSONObject(it);MonitorState(m.optString("id"),m.optString("name"),m.optString("type"),m.optString("status"),if(m.isNull("responseMs"))null else m.optDouble("responseMs").toFloat())}
         monitorsUp=if(root.isNull("monitorsUp"))null else root.getInt("monitorsUp");monitorsTotal=if(root.isNull("monitorsTotal"))null else root.getInt("monitorsTotal")
-        val rows=org.json.JSONArray(payload.second);events=(0 until rows.length()).map{val e=rows.getJSONObject(it);LabEvent(e.getString("source"),e.getString("title"),e.getString("detail"),e.getString("kind"),e.getString("id"),e.optString("time"),e.optString("receivedAt"))}
+        val rows=org.json.JSONArray(payload.second);events=(0 until rows.length()).map{val e=rows.getJSONObject(it);event(e)}
         time=root.getString("time");lastSuccess=System.currentTimeMillis();state=if(root.getJSONArray("errors").length()>0)"Live · Partial data" else "Live"
         if(newSample){record("cpu",cpuPercent);record("memory",memoryPercent);nodes.forEach{if(it.available){record("node:${it.name}",it.cpuPercent)}};services.forEach{record("app:${it.name}:cpu",it.cpu);record("app:${it.name}:memory",it.memory)}}
     }

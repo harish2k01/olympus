@@ -58,17 +58,17 @@ internal val LocalGridGap=staticCompositionLocalOf{10}
       }
       "Home"->{
      Text("Widget spacing · ${gap}dp",fontSize=12.sp);Slider(value=gap.toFloat(),onValueChange={val n=it.toInt();prefs.edit().putInt("gridGap",n).apply();setGap(n)},valueRange=6f..16f,steps=9)
-       listOf("Edit Home","Add widget","Export layout","Import layout","Reset this layout").forEach{action->TextButton(onClick={home(action)}){Text(action)}}
+       listOf("Edit Home","Add widget","Export layout","Import layout","Reset this layout").forEach{action->DeskAction(action){home(action)}}
       }
       "Events"->{
      SettingsHeading("Notifications & integrations")
      SettingSwitch("Show test notifications",tests){bool("showTests",it,setTests)}
-     TextButton(onClick=monitors){Text("Monitors · status & response time →")}
+     DeskAction("Monitors · status & response time →"){monitors()}
      val received=LiveRepository.events.filter{it.source!="Kubernetes"&&it.source!="Prometheus"&&it.source!="Test"}.groupBy{it.source}
      if(received.isEmpty())Text("No webhook deliveries in the recent feed",color=Color(0xFFBFC4D1),fontSize=12.sp)
      received.forEach{(source,events)->Row(Modifier.fillMaxWidth().padding(vertical=6.dp),horizontalArrangement=Arrangement.SpaceBetween){Text(source,fontSize=12.sp);Text(localTime(events.maxOf{it.received.ifBlank{it.time}}),fontSize=11.sp,color=Color(0xFFBFC4D1))}}
      SettingsHeading("Storage & privacy")
-     Text("Event history · 30 days / 2,000 records\nStored on the backend's 1 GiB volume. Earliest limit wins.\nKubernetes warnings and alerts are retained once observed.\nSystem notifications while the app is closed are not enabled.",fontSize=12.sp,lineHeight=20.sp,color=Color(0xFFBFC4D1))
+     Text("Event history · 30 days / 2,000 records\nStored on the backend's 1 GiB volume. Active incidents remain until recovery is confirmed.\nKubernetes warnings and alerts are retained once observed.\nSystem notifications while the app is closed are not enabled.",fontSize=12.sp,lineHeight=20.sp,color=Color(0xFFBFC4D1))
      TextButton(onClick={java.io.File(context.filesDir,"last-frame.json").delete();context.cacheDir.listFiles()?.filter{it.name.startsWith("asset-")}?.forEach{it.delete()}}){Text("Clear local cache")}
       }
      }

@@ -1,27 +1,25 @@
 package dev.olympus.desk.data
-
 import org.json.JSONArray
 import org.json.JSONObject
 
-data class DeskWidget(val id:String,val kind:String,val target:String="",val size:Int=1,val label:String="")
+data class DeskWidget(val id:String,val kind:String,val target:String="",val width:Int=2,val height:Int=1,val label:String="",val fields:List<String> = emptyList(),val x:Int=-1,val y:Int=-1)
 object DeskLayout {
-    val kinds=listOf("Clock","Attention","CPU","Memory","Nodes","Monitors","GitOps","Downloads","Backups","Events","App","Node")
-    fun defaults()=listOf("Clock","Nodes","GitOps","CPU","Memory").mapIndexed{i,k->DeskWidget("default-$i",k,size=if(k=="Clock")2 else 1)}
-    fun encode(items:List<DeskWidget>)=JSONArray().apply{items.forEach{put(JSONObject().put("id",it.id).put("kind",it.kind).put("target",it.target).put("size",it.size).put("label",it.label))}}.toString()
-    fun decode(value:String):List<DeskWidget>{val list=JSONArray(value);require(list.length()<=40);val result=(0 until list.length()).map{val item=list.getJSONObject(it);val size=item.getInt("size");val kind=item.getString("kind");require(kind in kinds&&size in 0..2);DeskWidget(item.getString("id"),kind,item.optString("target"),size,item.optString("label").take(40))};require(result.map{it.id}.distinct().size==result.size);return result}
-    // Pack rows without overlapping; large cards occupy an entire row on phones.
-    fun rows(items:List<DeskWidget>,columns:Int):List<List<DeskWidget>>{val out=mutableListOf<List<DeskWidget>>();var row=mutableListOf<DeskWidget>();var used=0;for(item in items){val span=span(item,columns);if(used+span>columns){out.add(row);row=mutableListOf();used=0};row.add(item);used+=span};if(row.isNotEmpty())out.add(row);return out}
-    fun span(item:DeskWidget,columns:Int)=if(item.size==2)2.coerceAtMost(columns) else 1
-    data class Cell(val widget:DeskWidget,val column:Int,val row:Int,val width:Int,val height:Int)
-    fun place(items:List<DeskWidget>,columns:Int):List<Cell>{
-        val occupied=mutableSetOf<Pair<Int,Int>>()
-        return items.map{item->
-            val width=if(item.kind=="Clock"&&!(columns==2&&item.size==2))1 else span(item,columns)
-            val height=if(item.kind=="Clock"&&item.size==2){if(columns>2)4 else 2} else when(item.size){0->1;1->2;else->3}
-            var row=0;var column=0
-            while(true){val free=column+width<=columns&&(row until row+height).all{y->(column until column+width).all{x->(x to y) !in occupied}};if(free)break;column++;if(column>=columns){column=0;row++}}
-            for(y in row until row+height)for(x in column until column+width)occupied.add(x to y)
-            Cell(item,column,row,width,height)
-        }
-    }
+ val kinds=listOf("Clock","Attention","CPU","Memory","Nodes","Monitors","GitOps","Downloads","Backups","Events","Service","App","Node")
+ fun defaults()=listOf("Clock","Nodes","GitOps","CPU","Memory","Monitors","Service","Downloads").mapIndexed{i,k->DeskWidget("default-$i",k,target=if(k=="Service")"sonarr"else"",height=if(k=="Clock")2 else 1)}
+ fun encode(items:List<DeskWidget>)=JSONArray().apply{items.forEach{w->put(JSONObject().put("id",w.id).put("kind",w.kind).put("target",w.target).put("width",w.width).put("height",w.height).put("label",w.label).put("fields",JSONArray(w.fields)).put("x",w.x).put("y",w.y))}}.toString()
+ fun decode(value:String):List<DeskWidget>{val array=JSONArray(value);require(array.length()<=40);val result=(0 until array.length()).map{i->val o=array.getJSONObject(i);val kind=o.getString("kind");require(kind in kinds);val old=o.optInt("size",1);val w=o.optInt("width",if(old==2&&kind!="Clock")4 else 2);val h=o.optInt("height",if(old==2)2 else 1);val x=o.optInt("x",-1);val y=o.optInt("y",-1);require(w in 1..6&&h in 1..4&&x in -1..5&&y in -1..80);val f=o.optJSONArray("fields")?:JSONArray();DeskWidget(o.getString("id"),kind,o.optString("target"),w,h,o.optString("label").take(40),(0 until f.length()).take(12).map{f.getString(it).take(40)},x,y)};require(result.map{it.id}.distinct().size==result.size);return result}
+ data class Cell(val widget:DeskWidget,val column:Int,val row:Int,val width:Int,val height:Int)
+ fun place(items:List<DeskWidget>,columns:Int):List<Cell>{
+  require(columns in 1..6);val occupied=mutableSetOf<Pair<Int,Int>>()
+  return items.map{item->val width=item.width.coerceIn(if(columns<=4)2.coerceAtMost(columns) else 1,columns);val height=item.height.coerceIn(1,4)
+   fun free(x:Int,y:Int)=x>=0&&x+width<=columns&&y>=0&&(y until y+height).all{r->(x until x+width).all{c->(c to r) !in occupied}}
+   var x=item.x.coerceAtMost(columns-width);var y=item.y
+   if(!free(x,y)){x=0;y=0;while(!free(x,y)){x++;if(x+width>columns){x=0;y++}}}
+   for(r in y until y+height)for(c in x until x+width)occupied.add(c to r)
+   Cell(item,x,y,width,height)
+  }
+ }
+ fun settle(items:List<DeskWidget>,columns:Int)=place(items,columns).map{it.widget.copy(width=it.width,x=it.column,y=it.row)}
+ fun resize(items:List<DeskWidget>,id:String,width:Int,height:Int,columns:Int):List<DeskWidget>{val item=items.find{it.id==id}?:return items;return settle(listOf(item.copy(width=width.coerceIn(if(columns<=4)2 else 1,columns),height=height.coerceIn(1,4)))+items.filter{it.id!=id},columns)}
+ fun move(items:List<DeskWidget>,id:String,x:Int,y:Int,columns:Int):List<DeskWidget>{val item=items.find{it.id==id}?:return items;return settle(listOf(item.copy(x=x.coerceIn(0,(columns-item.width).coerceAtLeast(0)),y=y.coerceIn(0,80)))+items.filter{it.id!=id},columns)}
 }

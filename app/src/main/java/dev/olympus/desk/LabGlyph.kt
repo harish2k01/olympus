@@ -24,6 +24,7 @@ import kotlin.math.*
   when(kind){
    "Home"->{path(3f to 10f,12f to 3f,21f to 10f);path(5f to 9f,5f to 21f,19f to 21f,19f to 9f);path(9f to 21f,9f to 14f,15f to 14f,15f to 21f)}
    "Nodes"->{listOf(4f,13f).forEach{y->path(3f to y,21f to y,21f to y+6,3f to y+6,close=true);drawCircle(color,1f*u,Offset(6*u,(y+3)*u));line(14f,y+3,18f,y+3)}}
+   "Monitors"->{path(2f to 12f,6f to 12f,9f to 4f,13f to 20f,17f to 10f,21f to 10f)}
    "Events"->{val p=Path().apply{moveTo(5*u,17*u);quadraticTo(7*u,15*u,7*u,10*u);cubicTo(7*u,3*u,17*u,3*u,17*u,10*u);quadraticTo(17*u,15*u,19*u,17*u);close()};drawPath(p,color,style=Stroke(stroke));line(10f,21f,14f,21f);line(12f,2f,12f,4f)}
    "Apps"->{listOf(3f,14f).forEach{x->listOf(3f,14f).forEach{y->path(x to y,x+7 to y,x+7 to y+7,x to y+7,close=true)}}}
    "GitOps"->{line(6f,5f,6f,18f);path(6f to 14f,16f to 8f,16f to 5f);listOf(6f to 3f,16f to 3f,6f to 20f).forEach{(x,y)->drawCircle(color,2*u,Offset(x*u,y*u),style=Stroke(stroke))}}
