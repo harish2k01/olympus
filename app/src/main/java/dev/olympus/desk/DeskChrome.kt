@@ -21,6 +21,7 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import dev.olympus.desk.data.LiveRepository
+import dev.olympus.desk.data.isInformational
 import kotlin.math.*
 
 internal val LocalReducedMotion=staticCompositionLocalOf{false}
@@ -42,7 +43,7 @@ internal val LocalReducedMotion=staticCompositionLocalOf{false}
 
 /** Draws locally from the shared live snapshot; no requests or additional assets. */
 @Composable internal fun ClusterMascot(modifier:Modifier=Modifier){
- val mood=clusterMood(LiveRepository.state.startsWith("Live"),LiveRepository.signals.isNotEmpty()&&LiveRepository.signals.values.all{it},LiveRepository.nodes.size,LiveRepository.nodes.count{!it.ready},LiveRepository.services.size,LiveRepository.services.count{it.health!="Healthy"||it.sync!="Synced"},LiveRepository.monitors.size,LiveRepository.monitors.count{it.status=="Down"},LiveRepository.active.count{it.state=="Firing"},LiveRepository.active.count{it.state=="Pending"},LiveRepository.active.count{it.state=="Unknown"},LiveRepository.active.count{it.state=="Firing"&&it.kind.lowercase() in listOf("critical","high","fatal")})
+ val mood=clusterMood(LiveRepository.state.startsWith("Live"),LiveRepository.signals.isNotEmpty()&&LiveRepository.signals.values.all{it},LiveRepository.nodes.size,LiveRepository.nodes.count{!it.ready},LiveRepository.services.size,LiveRepository.services.count{it.health!="Healthy"||it.sync!="Synced"}+LiveRepository.issues.size,LiveRepository.monitors.size,LiveRepository.monitors.count{it.status=="Down"},LiveRepository.active.count{it.state=="Firing"&&!isInformational(it.kind)},LiveRepository.active.count{it.state=="Pending"&&!isInformational(it.kind)},LiveRepository.active.count{it.state=="Unknown"},LiveRepository.active.count{it.state=="Firing"&&it.kind.lowercase() in listOf("critical","high","fatal")})
  val reduced=LocalReducedMotion.current
  var hover=0f;var phase=0f;var angle=0f
  if(!reduced){val motion=rememberInfiniteTransition(label="cluster_smiley")
@@ -51,7 +52,7 @@ internal val LocalReducedMotion=staticCompositionLocalOf{false}
   val orbit by motion.animateFloat(0f,360f,infiniteRepeatable(tween(if(mood==ClusterMood.Healthy)18000 else 24000,easing=LinearEasing)),label="orbit")
   hover=floating;phase=blinking;angle=orbit
  }
- val target=when(mood){ClusterMood.Healthy->14f;ClusterMood.Attention->5f;ClusterMood.Critical->1f;ClusterMood.Unknown->8f}
+ val target=when(mood){ClusterMood.Healthy->14f;ClusterMood.Attention->8f;ClusterMood.Critical->1f;ClusterMood.Unknown->8f}
  val curve by animateFloatAsState(target,tween(if(reduced)0 else 450),label="expression")
  val accent by androidx.compose.animation.animateColorAsState(when(mood){ClusterMood.Healthy->DeskColors.green;ClusterMood.Attention->DeskColors.apricot;ClusterMood.Critical->Color(0xFFFFA8B8);ClusterMood.Unknown->DeskColors.lilac},tween(if(reduced)0 else 450),label="health_accent")
  val description=when(mood){ClusterMood.Healthy->"Cluster healthy";ClusterMood.Attention->"Cluster needs attention";ClusterMood.Critical->"Cluster has a failure";ClusterMood.Unknown->"Cluster status unconfirmed"}

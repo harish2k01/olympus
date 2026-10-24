@@ -4,7 +4,7 @@ import org.json.JSONObject
 
 data class DeskWidget(val id:String,val kind:String,val target:String="",val width:Int=2,val height:Int=1,val label:String="",val fields:List<String> = emptyList(),val x:Int=-1,val y:Int=-1)
 object DeskLayout {
- val kinds=listOf("Clock","Attention","CPU","Memory","Nodes","Monitors","GitOps","Downloads","Backups","Events","Service","App","Node")
+ val kinds=listOf("Clock","Attention","CPU","Memory","Nodes","Monitors","GitOps","Downloads","Backups","Events","Alerts","Service","App","Node")
  fun defaults()=listOf("Clock","Nodes","GitOps","CPU","Memory","Monitors","Service","Downloads").mapIndexed{i,k->DeskWidget("default-$i",k,target=if(k=="Service")"sonarr"else"",height=if(k=="Clock")2 else 1)}
  fun encode(items:List<DeskWidget>)=JSONArray().apply{items.forEach{w->put(JSONObject().put("id",w.id).put("kind",w.kind).put("target",w.target).put("width",w.width).put("height",w.height).put("label",w.label).put("fields",JSONArray(w.fields)).put("x",w.x).put("y",w.y))}}.toString()
  fun decode(value:String):List<DeskWidget>{val array=JSONArray(value);require(array.length()<=40);val result=(0 until array.length()).map{i->val o=array.getJSONObject(i);val kind=o.getString("kind");require(kind in kinds);val old=o.optInt("size",1);val w=o.optInt("width",if(old==2&&kind!="Clock")4 else 2);val h=o.optInt("height",if(old==2)2 else 1);val x=o.optInt("x",-1);val y=o.optInt("y",-1);require(w in 1..6&&h in 1..4&&x in -1..5&&y in -1..80);val f=o.optJSONArray("fields")?:JSONArray();DeskWidget(o.getString("id"),kind,o.optString("target"),w,h,o.optString("label").take(40),(0 until f.length()).take(12).map{f.getString(it).take(40)},x,y)};require(result.map{it.id}.distinct().size==result.size);return result}

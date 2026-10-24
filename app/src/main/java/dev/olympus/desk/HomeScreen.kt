@@ -112,7 +112,7 @@ private fun stamp(value:String)=try{DateTimeFormatter.ofPattern("dd MMM · HH:mm
   AnimatedVisibility(visible=!focusMode||dockShown||editing){
   Row(Modifier.fillMaxWidth().height(52.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(8.dp)){
    if(detail.isNotEmpty())TextButton(onClick={detail=""},modifier=Modifier.size(40.dp),contentPadding=PaddingValues(0.dp)){LabGlyph("Back",Paper,23.dp)}else Box(Modifier.size(30.dp).clip(RoundedCornerShape(10.dp)).background(Color(0xFF4A63EA)),contentAlignment=Alignment.Center){LabGlyph("Brand",Paper,22.dp)}
-   Text(if(detail.isEmpty())if(tab=="Home")"olympus"else tab else if(detail.startsWith("event:"))"Event" else detail.substringAfter(":"),fontSize=20.sp,fontWeight=FontWeight.SemiBold,color=Paper,maxLines=1,overflow=TextOverflow.Ellipsis,modifier=Modifier.widthIn(max=if(wide)350.dp else 145.dp))
+   Text(if(detail.isEmpty())if(tab=="Home")"olympus"else tab else if(detail.startsWith("events-history:"))"Recent activity"else if(detail.startsWith("event:"))"Event" else detail.substringAfter(":"),fontSize=20.sp,fontWeight=FontWeight.SemiBold,color=Paper,maxLines=1,overflow=TextOverflow.Ellipsis,modifier=Modifier.widthIn(max=if(wide)350.dp else 145.dp))
    if(detail.isEmpty()&&!editing)LiveStatus(reducedMotion)
    Spacer(Modifier.weight(1f))
    if(detail.startsWith("node:")||detail.startsWith("app:"))TextButton(onClick={pin(if(detail.startsWith("node:"))"Node"else"App",detail.substringAfter(":"))}){Text("Pin",color=Cobalt)}
@@ -133,10 +133,11 @@ private fun stamp(value:String)=try{DateTimeFormatter.ofPattern("dd MMM · HH:mm
   AnimatedContent(targetState=detail.ifEmpty{tab},modifier=Modifier.fillMaxSize(),transitionSpec={if(reducedMotion)EnterTransition.None togetherWith ExitTransition.None else fadeIn(tween(180)) togetherWith fadeOut(tween(120))},label="page"){page->
    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(bottom=if(page=="Home")0.dp else 10.dp)){
     when{
+     page.startsWith("events-history:")->NotificationInbox(page.substringAfter(":"),"History",true){selectedEvent=it;detail="event:${it.id}"}
      page.startsWith("events-source:")->NotificationInbox(page.substringAfter(":")){selectedEvent=it;detail="event:${it.id}"}
      page.startsWith("node:")->NodeDetailScreen(page.substringAfter(":"))
      page.startsWith("app:")->ApplicationScreen(page.substringAfter(":")){detail=it}
-     page.startsWith("event:")->(LiveRepository.events.find{it.id==page.substringAfter(":")}?:selectedEvent?.takeIf{it.id==page.substringAfter(":")})?.let{NotificationDetail(it)}?:Text("Event no longer available",color=Muted)
+     page.startsWith("event:")->((LiveRepository.active+LiveRepository.events).find{it.id==page.substringAfter(":")}?:selectedEvent?.takeIf{it.id==page.substringAfter(":")})?.let{NotificationDetail(it)}?:Text("Event no longer available",color=Muted)
      page=="Attention"->{Title("Needs attention");if(LiveRepository.issues.isEmpty())Text("No current issues",color=Mint);LiveRepository.issues.forEach{item->Column(Modifier.fillMaxWidth().padding(bottom=10.dp).clip(RoundedCornerShape(16.dp)).background(Card).clickable{detail=item.target}.padding(16.dp)){Text(item.title,color=Paper,fontSize=14.sp);Text(item.severity,color=Apricot,fontSize=11.sp)}}}
      page=="Backups"-> {Title("Backups");Info("Destination",when(LiveRepository.backup){true->"Available";false->"Unavailable";null->"Unknown"});Info("Volumes with backup records",if(LiveRepository.backupVolumes==null)"Unavailable"else"${LiveRepository.backupRecorded} / ${LiveRepository.backupVolumes}");Info("Last recorded backup",LiveRepository.backupLast.ifEmpty{"None recorded"})}
      page=="Nodes"->Nodes{detail="node:$it"}
@@ -212,10 +213,10 @@ private fun stamp(value:String)=try{DateTimeFormatter.ofPattern("dd MMM · HH:mm
  }
 }
 
-private fun destination(w:DeskWidget)=when(w.kind){"Clock"->"Home";"Monitors"->"Monitors";"Node"->"node:${w.target}";"App","Service"->"app:${w.target}";"Backups"->"Backups";"Events"->if(w.target.isBlank()||w.target=="All")"Events"else"events-source:${w.target}";"Attention"->"Attention";"GitOps"->"Apps";"Downloads"->"app:qbittorrent";else->"Nodes"}
+private fun destination(w:DeskWidget)=when(w.kind){"Clock"->"Home";"Monitors"->"Monitors";"Node"->"node:${w.target}";"App","Service"->"app:${w.target}";"Backups"->"Backups";"Events"->"events-history:${w.target.ifBlank{"All"}}";"Alerts"->if(w.target.isBlank()||w.target=="All")"Events"else"events-source:${w.target}";"Attention"->"Attention";"GitOps"->"Apps";"Downloads"->"app:qbittorrent";else->"Nodes"}
 @Composable private fun WidgetBody(w:DeskWidget,modifier:Modifier){if(w.kind=="Clock"){ClockWidget(w.height,modifier,w.label);return};val fg=if(w.kind in listOf("GitOps","Attention","Monitors"))Color(0xFF29233D)else Paper;val secondary=if(fg!=Paper)fg.copy(alpha=.8f)else Muted;Column(modifier.fillMaxWidth(),verticalArrangement=Arrangement.spacedBy(5.dp)){
  val app=LiveRepository.services.find{it.name==w.target};val node=LiveRepository.nodes.find{it.name==w.target}
- Row(verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(8.dp)){if(w.kind=="App"&&w.width>=2)AppIcon(app?.icon?:"",w.target);Text(w.label.ifBlank{if(w.kind in listOf("App","Node","Service"))w.target else w.kind},color=secondary,fontSize=if(w.width<2)10.sp else 12.sp,maxLines=1,overflow=TextOverflow.Ellipsis,modifier=Modifier.weight(1f));if(w.kind=="GitOps")LabGlyph("GitOps",fg,19.dp)}
+ Row(verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(8.dp)){if(w.kind=="App"&&w.width>=2)AppIcon(app?.icon?:"",w.target);Text(w.label.ifBlank{if(w.kind in listOf("App","Node","Service"))w.target else when(w.kind){"Events"->"Recent activity";"Alerts"->"Firing alerts";else->w.kind}},color=secondary,fontSize=if(w.width<2)10.sp else 12.sp,maxLines=1,overflow=TextOverflow.Ellipsis,modifier=Modifier.weight(1f));if(w.kind=="GitOps")LabGlyph("GitOps",fg,19.dp)}
  val missing=when(w.kind){"CPU"->LiveRepository.cpuPercent==null;"Memory"->LiveRepository.memoryPercent==null;"Downloads"->LiveRepository.download==null;"Monitors"->LiveRepository.monitorsTotal==null;"Backups"->LiveRepository.backup==null;"App"->app==null;"Node"->node==null;else->LiveRepository.lastSuccess==0L}
  if(w.width>=2&&(missing||!LiveRepository.state.startsWith("Live")))Text(if(missing)"Unavailable"else"Last known data",color=if(fg==Paper)Apricot else fg,fontSize=9.sp)
  val visibleEvents=LiveRepository.events.filter{(w.target.isBlank()||w.target=="All"||it.source==w.target)&&(LocalShowTests.current||!(it.kind=="Test"||it.source=="Test"||it.title=="Test"))}
@@ -225,15 +226,19 @@ private fun destination(w:DeskWidget)=when(w.kind){"Clock"->"Home";"Monitors"->"
   else {val fields=if(w.fields.isEmpty())service.fields.keys.take(3)else w.fields;fields.forEach{field->Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween){Text(field,color=secondary,fontSize=12.sp);Text(service.fields[field]?.toInt()?.toString()?:"—",color=fg,fontSize=15.sp,fontWeight=FontWeight.SemiBold)}};if(service.error.isNotBlank())Text("Some fields unavailable",color=Apricot,fontSize=10.sp)}
   return@Column
  }
- val value=if(missing)"—"else when(w.kind){"CPU"->"${LiveRepository.cpuPercent.fmt()}%";"Memory"->"${LiveRepository.memoryPercent.fmt()}%";"Nodes"->"${LiveRepository.nodes.count{it.ready}} / ${LiveRepository.nodes.size}";"Monitors"->"${LiveRepository.monitorsUp?:"—"} / ${LiveRepository.monitorsTotal?:"—"}";"GitOps"->"${LiveRepository.services.count{it.health=="Healthy"&&it.sync=="Synced"}} / ${LiveRepository.services.size}";"Downloads"->"${LiveRepository.download.fmt()} MiB/s";"Backups"->when(LiveRepository.backup){true->"Available";false->"Unavailable";null->"Unknown"};"Attention"->if(LiveRepository.lastSuccess==0L)"Unavailable" else "${LiveRepository.issues.size} issues";"Events"->"${visibleEvents.size} events";"App"->app?.health?:"Unavailable";"Node"->if(node==null)"Unavailable" else if(node.ready)"Ready" else "Not ready";else->"—"}
+ val activityCounts=if(LocalShowTests.current)LiveRepository.recentActivityWithTests else LiveRepository.recentActivity
+ val recentCount=activityCounts?.get(w.target.ifBlank{"All"})?:if(activityCounts==null)null else 0
+ val firing=LiveRepository.active.filter{it.state=="Firing"&&(w.target.isBlank()||w.target=="All"||it.source==w.target)}
+ val value=if(missing)"—"else when(w.kind){"CPU"->"${LiveRepository.cpuPercent.fmt()}%";"Memory"->"${LiveRepository.memoryPercent.fmt()}%";"Nodes"->"${LiveRepository.nodes.count{it.ready}} / ${LiveRepository.nodes.size}";"Monitors"->"${LiveRepository.monitorsUp?:"—"} / ${LiveRepository.monitorsTotal?:"—"}";"GitOps"->"${LiveRepository.services.count{it.health=="Healthy"&&it.sync=="Synced"}} / ${LiveRepository.services.size}";"Downloads"->"${LiveRepository.download.fmt()} MiB/s";"Backups"->when(LiveRepository.backup){true->"Available";false->"Unavailable";null->"Unknown"};"Attention"->if(LiveRepository.lastSuccess==0L)"Unavailable" else if(LiveRepository.issues.isNotEmpty())"${LiveRepository.issues.size} issues"else if(!LiveRepository.state.startsWith("Live")||LiveRepository.signals.values.any{!it})"Unconfirmed"else"No action needed";"Events"->"${recentCount?.toString()?:"—"} records";"Alerts"->"${firing.size} firing";"App"->app?.health?:"Unavailable";"Node"->if(node==null)"Unavailable" else if(node.ready)"Ready" else "Not ready";else->"—"}
  Text(value,color=fg,fontWeight=FontWeight.SemiBold,fontSize=if(w.width<2)18.sp else if(value.length>10)22.sp else 32.sp,maxLines=1,overflow=TextOverflow.Ellipsis)
  if(w.width>=2){when(w.kind){
   "CPU"->{Text("${LiveRepository.totalCores} cores",color=secondary,fontSize=11.sp);Spark(LiveRepository.history["cpu"]?:emptyList(),Cobalt)}
   "Memory"->{Text("${LiveRepository.usedMemory.fmt()} / ${LiveRepository.totalMemory.fmt()} GiB",color=secondary,fontSize=11.sp);Spark(LiveRepository.history["memory"]?:emptyList(),Lilac)}
   "App"->{ResourceMiniMap(app?.resources?:emptyList(),app?.pods?:0)}
   "Node"->{Text("CPU ${node?.cpuPercent.fmt()}%",color=secondary,fontSize=11.sp);Spark(LiveRepository.history["node:${w.target}"]?:emptyList(),Cobalt)}
-  "Events"->visibleEvents.take(if(w.height>=2)3 else 1).forEach{Text(it.title,color=fg,fontSize=12.sp,maxLines=1,overflow=TextOverflow.Ellipsis);Text(stamp(it.time),color=secondary,fontSize=10.sp)}
-  "Attention"->{LiveRepository.issues.take(if(w.height>=2)3 else 1).forEach{Text(it.title,color=fg,fontSize=12.sp,maxLines=2,overflow=TextOverflow.Ellipsis)};if(LiveRepository.issues.isEmpty())Text(if(LiveRepository.lastSuccess==0L)"Connecting…"else"All clear",color=fg,fontSize=12.sp)}
+  "Events"->{Text("Last 24 hours",color=secondary,fontSize=11.sp);Text("${firing.size} firing · ${firing.count{isInformational(it.kind)}} info",color=secondary,fontSize=10.sp)}
+  "Alerts"->{Text("${firing.count{!isInformational(it.kind)}} actionable · ${firing.count{isInformational(it.kind)}} info",color=secondary,fontSize=11.sp);firing.firstOrNull()?.let{Text(it.title,color=fg,fontSize=12.sp,maxLines=1,overflow=TextOverflow.Ellipsis)}}
+  "Attention"->{LiveRepository.issues.take(if(w.height>=2)3 else 1).forEach{Text(it.title,color=fg,fontSize=12.sp,maxLines=2,overflow=TextOverflow.Ellipsis)};if(LiveRepository.issues.isEmpty())Text(if(LiveRepository.lastSuccess==0L)"Connecting…"else if(LiveRepository.active.any{isInformational(it.kind)&&it.state=="Firing"})"${LiveRepository.active.count{isInformational(it.kind)&&it.state=="Firing"}} informational"else"Healthy",color=fg,fontSize=12.sp)}
   "Backups"->Text("Longhorn destination",color=secondary,fontSize=11.sp)
   "GitOps"->Text("Healthy & synced",color=secondary,fontSize=11.sp)
   "Nodes"->{Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(4.dp)){LiveRepository.nodes.forEach{node->Box(Modifier.weight(1f).height(4.dp).background(if(node.ready)Mint else Apricot,RoundedCornerShape(3.dp)))}};Text("Nodes ready",color=secondary,fontSize=11.sp)}
@@ -246,7 +251,7 @@ private fun destination(w:DeskWidget)=when(w.kind){"Clock"->"Home";"Monitors"->"
  var label by remember{mutableStateOf(initial?.label?:"")};var fields by remember{mutableStateOf(initial?.fields?:emptyList())}
  var configuring by remember{mutableStateOf(initial!=null)};var sourceOpen by remember{mutableStateOf(false)};var search by remember{mutableStateOf("")}
  val wide=wideWindow();val columns=if(wide)6 else 4
- val targets=when(kind){"Service"->LiveRepository.integrations.map{it.name};"App"->LiveRepository.services.map{it.name};"Node"->LiveRepository.nodes.map{it.name};"Events"->listOf("All")+LiveRepository.events.map{it.source}.distinct();else->emptyList()}
+ val targets=when(kind){"Service"->LiveRepository.integrations.map{it.name};"App"->LiveRepository.services.map{it.name};"Node"->LiveRepository.nodes.map{it.name};"Events","Alerts"->listOf("All")+(LiveRepository.active+LiveRepository.events).map{it.source}.distinct();else->emptyList()}
  LaunchedEffect(kind,targets){if(targets.isNotEmpty()&&target !in targets)target=targets.first()}
  val preview=DeskWidget(initial?.id?:"preview",kind,target,width,height,label,fields,initial?.x?:-1,initial?.y?:-1)
  @Composable fun previewPanel(){Column(verticalArrangement=Arrangement.spacedBy(10.dp)){
@@ -264,7 +269,7 @@ private fun destination(w:DeskWidget)=when(w.kind){"Clock"->"Home";"Monitors"->"
   Text("SIZE",color=Muted,fontSize=10.sp)
   Row(horizontalArrangement=Arrangement.spacedBy(10.dp)){stepper("Width",width,if(wide)1 else 2,columns){width=it};stepper("Height",height,1,4){height=it}}
   if(targets.isNotEmpty()){
-   Text(if(kind=="Events")"SOURCE"else if(kind=="Node")"NODE"else"APPLICATION",color=Muted,fontSize=10.sp)
+   Text(if(kind in listOf("Events","Alerts"))"SOURCE"else if(kind=="Node")"NODE"else"APPLICATION",color=Muted,fontSize=10.sp)
    Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(Card).clickable{sourceOpen=!sourceOpen}.padding(12.dp),verticalAlignment=Alignment.CenterVertically){Text(target,color=Paper,fontSize=13.sp,modifier=Modifier.weight(1f));Text(if(sourceOpen)"⌃"else"⌄",color=Muted)}
    if(sourceOpen){DeskSearch(search,{search=it},"Search");Column(Modifier.heightIn(max=160.dp).verticalScroll(rememberScrollState())){targets.filter{it.contains(search,true)}.forEach{t->Row(Modifier.fillMaxWidth().clickable{target=t;fields=emptyList();sourceOpen=false;search=""}.padding(10.dp)){Text(t,color=if(target==t)Cobalt else Paper,fontSize=13.sp)}}}}
   }
@@ -290,8 +295,8 @@ private fun destination(w:DeskWidget)=when(w.kind){"Clock"->"Home";"Monitors"->"
      Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(vertical=10.dp),verticalArrangement=Arrangement.spacedBy(10.dp)){
       DeskLayout.kinds.chunked(if(wide)4 else 2).forEach{row->Row(horizontalArrangement=Arrangement.spacedBy(10.dp)){
        row.forEach{k->Column(Modifier.weight(1f).height(100.dp).clip(RoundedCornerShape(16.dp)).background(Card).border(1.dp,DeskColors.raised,RoundedCornerShape(16.dp)).clickable{kind=k;target="";fields=emptyList();height=if(k=="Clock")2 else 1;configuring=true}.padding(14.dp),verticalArrangement=Arrangement.spacedBy(10.dp)){
-        Box(Modifier.size(30.dp).clip(RoundedCornerShape(9.dp)).background(widgetColor(k)) ,contentAlignment=Alignment.Center){LabGlyph(when(k){"Service","App"->"Apps";"Node"->"Nodes";else->k},if(k in listOf("GitOps","Monitors","Attention"))Ink else if(k=="Clock")Paper else Cobalt,20.dp)}
-        Text(k,color=Paper,fontSize=14.sp,fontWeight=FontWeight.Medium)
+        Box(Modifier.size(30.dp).clip(RoundedCornerShape(9.dp)).background(widgetColor(k)) ,contentAlignment=Alignment.Center){LabGlyph(when(k){"Service","App"->"Apps";"Node"->"Nodes";"Alerts"->"Attention";else->k},if(k in listOf("GitOps","Monitors","Attention"))Ink else if(k=="Clock")Paper else Cobalt,20.dp)}
+        Text(when(k){"Events"->"Recent activity";"Alerts"->"Firing alerts";else->k},color=Paper,fontSize=14.sp,fontWeight=FontWeight.Medium)
        }}
        repeat((if(wide)4 else 2)-row.size){Spacer(Modifier.weight(1f))}
       }}
