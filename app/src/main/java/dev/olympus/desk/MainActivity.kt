@@ -19,10 +19,10 @@ import androidx.compose.ui.unit.sp
 import dev.olympus.desk.data.*
 import kotlinx.coroutines.*
 
-private val Ink=Color(0xFF14171E)
-private val Tile=Color(0xFF242832)
-private val Cobalt=Color(0xFF879BFF)
-private val Paper=Color(0xFFF5F3EF)
+private val Ink=DeskColors.background
+private val Tile=DeskColors.surface
+private val Cobalt=DeskColors.blue
+private val Paper=DeskColors.text
 class MainActivity:ComponentActivity(){
     override fun onCreate(savedInstanceState:Bundle?){
         super.onCreate(savedInstanceState)

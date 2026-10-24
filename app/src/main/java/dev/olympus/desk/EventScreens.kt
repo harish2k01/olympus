@@ -37,8 +37,8 @@ private fun groupingKey(e:LabEvent)=listOf(e.source,e.title,e.detail,e.kind)
  val showTests=LocalShowTests.current
  var source by rememberSaveable(initialSource){mutableStateOf(initialSource)}
 
- DeskSearch(query,{query=it},"Search events")
- DeskSegments(listOf("Firing","History"),period,{period=it})
+ if(wideWindow())Row(verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(10.dp)){Box(Modifier.weight(1f)){DeskSearch(query,{query=it},"Search events")};Box(Modifier.width(180.dp)){DeskSegments(listOf("Firing","History"),period,{period=it})}}
+ else {DeskSearch(query,{query=it},"Search events");DeskSegments(listOf("Firing","History"),period,{period=it})}
  val all=(LiveRepository.events+older).distinctBy{it.id}
  Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),horizontalArrangement=Arrangement.spacedBy(6.dp)){(listOf("All")+(LiveRepository.active+all).map{it.source}.distinct().sorted()).forEach{label->DeskAction(label,source==label){source=label}}}
  val activeIds=LiveRepository.active.map{it.id}.toSet()

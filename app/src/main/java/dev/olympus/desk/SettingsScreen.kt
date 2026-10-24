@@ -83,7 +83,7 @@ internal val LocalGridGap=staticCompositionLocalOf{10}
 
 @Composable internal fun MonitorScreen(){
  var search by remember{mutableStateOf("")};var status by remember{mutableStateOf("All")}
- OutlinedTextField(value=search,onValueChange={search=it},label={Text("Search monitors")},singleLine=true,modifier=Modifier.fillMaxWidth().padding(top=8.dp))
+ DeskSearch(search,{search=it},"Search monitors")
  CompactTabs(listOf("All","Up","Down","Pending","Maintenance"),status,{status=it})
  val rows=LiveRepository.monitors.filter{it.name.contains(search,true)&&(status=="All"||it.status==status)}
  if(LiveRepository.monitors.isEmpty())Text("Monitor readings unavailable",modifier=Modifier.padding(16.dp),color=Color(0xFFBFC4D1))

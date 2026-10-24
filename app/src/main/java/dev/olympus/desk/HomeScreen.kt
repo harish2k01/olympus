@@ -193,7 +193,7 @@ private fun stamp(value:String)=try{DateTimeFormatter.ofPattern("dd MMM · HH:mm
  Layout(content={cells.forEach{cell->val widget=cell.widget
   var delta by remember(widget.id){mutableStateOf(Offset.Zero)}
   Box(Modifier.zIndex(if(delta!=Offset.Zero)1f else 0f).graphicsLayer{translationX=delta.x;translationY=delta.y}.pointerInput(widget.id,columns,cell.column,cell.row){detectDragGesturesAfterLongPress(onDragStart={edit();delta=Offset.Zero},onDrag={change,amount->change.consume();delta+=amount},onDragEnd={save(DeskLayout.move(latest,widget.id,cell.column+kotlin.math.round(delta.x/pitchX).toInt(),cell.row+kotlin.math.round(delta.y/pitchY).toInt(),columns));delta=Offset.Zero},onDragCancel={delta=Offset.Zero})}.border(if(editing)1.dp else 0.dp,Cobalt.copy(alpha=if(editing).65f else 0f),RoundedCornerShape(20.dp)).clip(RoundedCornerShape(20.dp)).background(widgetColor(widget.kind)).clickable(enabled=!editing&&widget.kind!="Clock"){open(destination(widget))}.padding(12.dp)){
-   WidgetBody(widget,Modifier.fillMaxSize().then(if(editing)Modifier.padding(top=25.dp)else Modifier))
+   WidgetBody(widget,Modifier.fillMaxSize())
    if(editing){
     Row(Modifier.align(Alignment.TopEnd).background(Ink,RoundedCornerShape(8.dp))){
      Box(Modifier.size(28.dp).clickable{configure(widget)},contentAlignment=Alignment.Center){LabGlyph("Settings",Cobalt,17.dp)}
