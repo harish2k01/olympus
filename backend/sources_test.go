@@ -5,3 +5,5 @@ func TestRetainedSourcesAndFilteredHistory(t *testing.T){
  r:=httptest.NewRequest("GET","/v1/events/history?source=Robusta",nil);r.Header.Set("Authorization","Bearer token");w:=httptest.NewRecorder();s.api(w,r);var result struct{Events []Event;Total int};if json.Unmarshal(w.Body.Bytes(),&result)!=nil||result.Total!=1||len(result.Events)!=1||result.Events[0].Source!="Robusta"{t.Fatal("older source hidden behind unrelated history")}
  sources:=retainedSources(s.events);if len(sources)!=2||sources[1].LastReceived!="2026-10-25T10:00:01Z"{t.Fatal("incomplete source index")}
 }
+
+func TestEventInspectionFindsRetainedRecord(t *testing.T){s:=&server{token:"token",events:[]Event{{ID:"old",Source:"Robusta"}}};for _,id:=range []string{"old","missing"}{r:=httptest.NewRequest("GET","/v1/events/item?id="+id,nil);r.Header.Set("Authorization","Bearer token");w:=httptest.NewRecorder();s.api(w,r);want:=200;if id=="missing"{want=404};if w.Code!=want{t.Fatal(w.Code)}}}

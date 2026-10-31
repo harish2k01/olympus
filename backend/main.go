@@ -398,7 +398,11 @@ func (s *server) api(w http.ResponseWriter, r *http.Request) {
 		write(w, 200, out)
 	case "/v1/events":
 		write(w, 200, s.feed(ctx))
-	case "/v1/events/sources":
+	case "/v1/events/item":
+  id:=r.URL.Query().Get("id");if len(id)==0||len(id)>256 {write(w,400,map[string]string{"error":"Invalid event identity"});return}
+  s.mu.Lock();var found *Event;for _,event:=range s.events {if event.ID==id {copy:=event;found=&copy;break}};s.mu.Unlock()
+  if found==nil {write(w,404,map[string]string{"error":"Event unavailable or expired"});return};write(w,200,found)
+ case "/v1/events/sources":
   s.mu.Lock(); sources:=retainedSources(s.events);s.mu.Unlock();write(w,200,map[string]any{"sources":sources})
  case "/v1/events/history":
 		offset, _ := strconv.Atoi(r.URL.Query().Get("offset"))
