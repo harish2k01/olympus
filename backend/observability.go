@@ -48,7 +48,9 @@ func route(path string) string {
 		return "health"
 	case path == "/v1/stream":
 		return "stream"
-	case path == "/v1/snapshot":
+	case path == "/v1/metrics/history":
+  return "metric_history"
+ case path == "/v1/snapshot":
 		return "snapshot"
 	case path == "/v1/events":
 		return "events"
