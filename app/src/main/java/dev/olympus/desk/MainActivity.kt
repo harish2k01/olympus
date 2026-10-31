@@ -18,12 +18,17 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.unit.sp
 import dev.olympus.desk.data.*
 import kotlinx.coroutines.*
+import kotlinx.coroutines.flow.takeWhile
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 
 private val Ink=DeskColors.background
 private val Tile=DeskColors.surface
 private val Cobalt=DeskColors.blue
 private val Paper=DeskColors.text
 class MainActivity:ComponentActivity(){
+    private var notificationNonce by androidx.compose.runtime.mutableLongStateOf(0)
+    private var notificationTarget by androidx.compose.runtime.mutableStateOf("")
     override fun onCreate(savedInstanceState:Bundle?){
         super.onCreate(savedInstanceState)
         WindowCompat.setDecorFitsSystemWindows(window,false)
@@ -34,7 +39,9 @@ class MainActivity:ComponentActivity(){
             if(insets.isVisible(WindowInsetsCompat.Type.statusBars()))view.postDelayed({if(!isFinishing&&!isDestroyed)immersive()},2500)
             insets
         }
+        notificationTarget=intent.getStringExtra("eventId").orEmpty()
         pairFromDebugIntent(intent)
+        if(getSharedPreferences("home-v3",0).getBoolean("backgroundAlerts",false))startForegroundService(Intent(this,AlertWatchService::class.java))
         lifecycleScope.launch {
           val cache=java.io.File(filesDir,"last-frame.json")
           val saved=withContext(Dispatchers.IO){try{if(cache.exists()&&cache.length()<3*1024*1024)cache.readText()else null}catch(_:Exception){null}}
@@ -43,9 +50,10 @@ class MainActivity:ComponentActivity(){
             launch { while(isActive){LiveRepository.checkFreshness();delay(5000)} }
             var retry=1000L
             while(isActive){
+                if(getSharedPreferences("home-v3",0).getBoolean("backgroundAlerts",false)){delay(1000);continue}
                 val pair=Pairing.read(this@MainActivity)
                 if(pair==null){delay(3000);continue}
-                try{LiveRepository.stream(pair).collect{LiveRepository.applyFrame(it);retry=1000L;withContext(Dispatchers.IO){try{val temp=java.io.File(filesDir,"last-frame.tmp");temp.writeText(it);temp.renameTo(cache)}catch(_:Exception){android.util.Log.w("Olympus","snapshot_cache_write_failed")}}};LiveRepository.unavailable()}
+                try{LiveRepository.stream(pair).takeWhile{!getSharedPreferences("home-v3",0).getBoolean("backgroundAlerts",false)}.collect{LiveRepository.applyFrame(it);retry=1000L;withContext(Dispatchers.IO){try{val temp=java.io.File(filesDir,"last-frame.tmp");temp.writeText(it);temp.renameTo(cache)}catch(_:Exception){android.util.Log.w("Olympus","snapshot_cache_write_failed")}}};if(!getSharedPreferences("home-v3",0).getBoolean("backgroundAlerts",false))LiveRepository.unavailable()}
                 catch(e:CancellationException){throw e}
                 catch(_:Exception){LiveRepository.unavailable()}
                 delay(retry);retry=(retry*2).coerceAtMost(30000)
@@ -61,12 +69,12 @@ class MainActivity:ComponentActivity(){
                     labelLarge=TextStyle(fontSize=12.sp,lineHeight=16.sp),
                     labelMedium=TextStyle(fontSize=11.sp,lineHeight=14.sp)
                 )
-            ) { HomeApp() }
+            ) { HomeApp(notificationTarget,notificationNonce) }
         }
     }
     private fun immersive(){WindowCompat.getInsetsController(window,window.decorView).apply{systemBarsBehavior=WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE;hide(WindowInsetsCompat.Type.systemBars())}}
     override fun onWindowFocusChanged(hasFocus:Boolean){super.onWindowFocusChanged(hasFocus);if(hasFocus)immersive()}
-    override fun onNewIntent(intent:Intent){super.onNewIntent(intent);pairFromDebugIntent(intent)}
+    override fun onNewIntent(intent:Intent){super.onNewIntent(intent);notificationNonce++;notificationTarget=intent.getStringExtra("eventId").orEmpty();pairFromDebugIntent(intent)}
     private fun pairFromDebugIntent(intent:Intent){if(BuildConfig.DEBUG){val token=intent.getStringExtra("pairToken");val url=intent.getStringExtra("backendUrl");if(token!=null&&url!=null)Pairing.save(this,url,token)}}
 }
 

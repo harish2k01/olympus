@@ -10,6 +10,7 @@ internal fun mergeAttention(legacy:List<AttentionItem>,active:List<LabEvent>):Li
 
 /** Current-state wording is separate from the original payload kept in technical details. */
 internal fun incidentTitle(event:LabEvent):String {
+ if(event.state=="Resolved"&&event.source=="Argo CD")return event.title.substringBefore(" · ").replace("requires attention","",ignoreCase=true).trim().let{if(it.endsWith("recovered",true))it else "$it recovered"}
  val title=when(event.title){"CPUThrottlingHigh"->"CPU throttling";"NodeDiskIOSaturation"->"Node disk I/O saturation";"NodeSystemSaturation"->"Node system saturation";else->event.title}
  return if(event.state=="Resolved")title.replace("requires attention","recovered",ignoreCase=true) else title
 }

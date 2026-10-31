@@ -80,21 +80,25 @@ private fun stamp(value:String)=try{DateTimeFormatter.ofPattern("dd MMM · HH:mm
  }
 }
 
-@Composable internal fun HomeApp(){
+@Composable internal fun HomeApp(notificationId:String="",notificationNonce:Long=0){
  val context=LocalContext.current
  val wide=wideWindow()
+ val compactHeader=!wide&&androidx.compose.ui.platform.LocalDensity.current.fontScale>1.15f
  val prefs=remember{context.getSharedPreferences("home-v3",0)}
- val layoutKey=if(wide)"landscape-v6" else "portrait-v6"
+ val layoutKey=if(wide)"landscape-v7" else "portrait-v7"
+ var gridColumns by remember(wide){mutableIntStateOf(if(wide)prefs.getInt("landscape-columns-v7",8)else 4)}
  var widgets by remember(layoutKey){mutableStateOf(try{prefs.getString(layoutKey,null)?.let{DeskLayout.decode(it)}?:DeskLayout.defaults(wide)}catch(_:Exception){DeskLayout.defaults(wide)})}
 
- var previousLayout by remember(layoutKey){mutableStateOf<List<DeskWidget>?>(null)}
+ var undoHistory by rememberSaveable(layoutKey){mutableStateOf(arrayListOf<String>())}
+ val previousLayout=undoHistory.lastOrNull()?.let{DeskLayout.decode(if(it.startsWith("["))it else JSONObject(it).getString("widgets"))}
  var selectedWidgetId by rememberSaveable{mutableStateOf("")}
- fun save(items:List<DeskWidget>){previousLayout=widgets;widgets=items;prefs.edit().putString(layoutKey,DeskLayout.encode(items)).apply()}
+ fun save(items:List<DeskWidget>){undoHistory=ArrayList((undoHistory+JSONObject().put("columns",gridColumns).put("widgets",DeskLayout.encode(widgets)).toString()).takeLast(20));widgets=items;prefs.edit().putString(layoutKey,DeskLayout.encode(items)).apply()}
  var tab by rememberSaveable{mutableStateOf("Home")}
  var clusterSection by rememberSaveable{mutableStateOf("Nodes")}
  var servicesSection by rememberSaveable{mutableStateOf("Monitors")}
  var selectedEvent by remember{mutableStateOf<LabEvent?>(null)}
  var detail by rememberSaveable{mutableStateOf("")}
+ LaunchedEffect(notificationId,notificationNonce){if(notificationId.isNotBlank()){tab="Inbox";detail=if(notificationId=="-inbox-")""else"event:$notificationId"}}
  var detailHistory by rememberSaveable{mutableStateOf(arrayListOf<String>())}
  fun backDetail(){if(detailHistory.isNotEmpty()){detail=detailHistory.last();detailHistory=ArrayList(detailHistory.dropLast(1))}else detail=""}
  var editing by rememberSaveable{mutableStateOf(false)}
@@ -115,50 +119,51 @@ private fun stamp(value:String)=try{DateTimeFormatter.ofPattern("dd MMM · HH:mm
  var gridGap by remember{mutableIntStateOf(prefs.getInt("gridGap",10))}
  DisposableEffect(keepAwake){val window=(context as? Activity)?.window;if(keepAwake)window?.addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)else window?.clearFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);onDispose{}}
  var focusMode by remember{mutableStateOf(prefs.getBoolean("focusMode",false))}
- LaunchedEffect(lastInteraction,editing,menu,picker,settings,configuring,dockSeconds){dockShown=true;if(!editing&&!menu&&!picker&&!settings&&configuring==null){delay(dockSeconds*1000L);dockShown=false}}
+ LaunchedEffect(lastInteraction,editing,menu,picker,settings,configuring,dockSeconds,detail,tab){dockShown=true;if(tab=="Home"&&detail.isBlank()&&!editing&&!menu&&!picker&&!settings&&configuring==null){delay(dockSeconds*1000L);dockShown=false}}
  var shift by remember{mutableIntStateOf(0)}
  LaunchedEffect(dimMode){while(dimMode){delay(60000);shift=(shift+1)%3}}
  DisposableEffect(dimMode,dim){val window=(context as? Activity)?.window;val old=window?.attributes?.screenBrightness;window?.attributes=window?.attributes?.apply{screenBrightness=if(dimMode)dim else -1f};onDispose{if(old!=null)window?.attributes=window?.attributes?.apply{screenBrightness=old}}}
  val dockVisible by rememberUpdatedState(dockShown)
  fun pin(kind:String,target:String){if(widgets.none{it.kind==kind&&it.target==target})save(widgets+DeskWidget(UUID.randomUUID().toString(),kind,target));message="Pinned to Home"}
  BackHandler(detail.isNotEmpty()||editing){if(detail.isNotEmpty())backDetail() else editing=false}
- CompositionLocalProvider(LocalReducedMotion provides reducedMotion,LocalShowTests provides showTests,LocalGridGap provides gridGap){
+ CompositionLocalProvider(LocalReducedMotion provides reducedMotion,LocalShowTests provides showTests,LocalGridGap provides gridGap,LocalGridColumns provides gridColumns){
  Surface(color=Ink,modifier=Modifier.fillMaxSize()){
  Box(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.displayCutout).pointerInput(Unit){awaitPointerEventScope{var revealing=false;while(true){val event=awaitPointerEvent(PointerEventPass.Initial);if(event.changes.any{it.pressed&&!it.previousPressed}){revealing=!dockVisible;lastInteraction=System.currentTimeMillis()};if(revealing)event.changes.forEach{it.consume()};if(event.changes.none{it.pressed})revealing=false}}}){
  Column(Modifier.fillMaxSize().padding(horizontal=16.dp).offset(x=if(dimMode)shift.dp else 0.dp)){
-  AnimatedVisibility(visible=!focusMode||dockShown||editing){
-  Row(Modifier.fillMaxWidth().height(52.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(8.dp)){
+  AnimatedVisibility(visible=detail.isNotBlank()||tab!="Home"||!focusMode||dockShown||editing){
+  Row(Modifier.fillMaxWidth().height(44.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(8.dp)){
    if(detail.isNotEmpty())TextButton(onClick={backDetail()},modifier=Modifier.size(40.dp),contentPadding=PaddingValues(0.dp)){LabGlyph("Back",Paper,23.dp)}else Box(Modifier.size(30.dp).clip(RoundedCornerShape(10.dp)).background(Color(0xFF4A63EA)),contentAlignment=Alignment.Center){LabGlyph("Brand",Paper,22.dp)}
-   Text(if(detail.isEmpty())if(tab=="Home")"olympus"else tab else routeTitle(detail),fontSize=20.sp,fontWeight=FontWeight.SemiBold,color=Paper,maxLines=1,overflow=TextOverflow.Ellipsis,modifier=Modifier.widthIn(max=if(wide)350.dp else 145.dp))
+   Text(if(detail.isEmpty())if(tab=="Home")"olympus"else tab else routeTitle(detail),fontSize=18.sp,fontWeight=FontWeight.SemiBold,color=Paper,maxLines=1,overflow=TextOverflow.Ellipsis,modifier=Modifier.widthIn(max=if(wide)350.dp else 145.dp))
    if(detail.isEmpty()&&!editing)LiveStatus(reducedMotion)
    Spacer(Modifier.weight(1f))
+
    if(detail.startsWith("node:")||detail.startsWith("app:"))TextButton(onClick={pin(if(detail.startsWith("node:"))"Node"else"App",detail.substringAfter(":"))}){Text("Pin",color=Cobalt)}
-   if(editing){if(previousLayout!=null)TextButton(onClick={val old=previousLayout;previousLayout=null;if(old!=null){widgets=old;prefs.edit().putString(layoutKey,DeskLayout.encode(old)).apply()}}){Text("Undo",color=Cobalt)};TextButton(onClick={picker=true}){Text("+ Widget",color=Cobalt)};TextButton(onClick={editing=false}){Text("Done",color=Mint)}}
-   else Row{IconButton(onClick={if(tab!="Home"||detail.isNotBlank()){tab="Home";detail=""};editing=!editing},modifier=Modifier.size(38.dp)){LabGlyph("Edit",Muted,20.dp)};IconButton(onClick={settings=true},modifier=Modifier.size(38.dp)){LabGlyph("Settings",Muted,21.dp)};Box{
+   if(editing){if(previousLayout!=null)TextButton(onClick={val old=previousLayout;val entry=undoHistory.lastOrNull();if(entry!=null&&!entry.startsWith("[")){gridColumns=JSONObject(entry).optInt("columns",gridColumns);if(wide)prefs.edit().putInt("landscape-columns-v7",gridColumns).apply()};undoHistory=ArrayList(undoHistory.dropLast(1));if(old!=null){widgets=old;prefs.edit().putString(layoutKey,DeskLayout.encode(old)).apply()}}){Text("Undo",color=Cobalt)};TextButton(onClick={picker=true}){Text("+ Widget",color=Cobalt)};TextButton(onClick={editing=false}){Text("Done",color=Mint)}}
+   else Row{if(detail.isEmpty()&&tab=="Home"&&!compactHeader)IconButton(onClick={if(tab!="Home"||detail.isNotBlank()){tab="Home";detail=""};editing=!editing},modifier=Modifier.size(38.dp)){LabGlyph("Edit",Muted,20.dp)};if(detail.isEmpty()&&!compactHeader)IconButton(onClick={settings=true},modifier=Modifier.size(38.dp)){LabGlyph("Settings",Muted,21.dp)};Box{
     IconButton(onClick={menu=true},modifier=Modifier.size(38.dp)){Text("•••",color=Muted)}
-    DeskPopup(menu,{menu=false},listOf(
+    DeskPopup(menu,{menu=false},if(detail.isNotBlank())listOf("Copy reference" to {(context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager).setPrimaryClip(ClipData.newPlainText("Olympus resource",detail));message="Reference copied"})else listOf(
      (if(focusMode)"Leave focus mode"else"Focus mode") to {focusMode=!focusMode;prefs.edit().putBoolean("focusMode",focusMode).apply()},
      "Edit Home" to {tab="Home";detail="";editing=true},
      "Add widget" to {tab="Home";detail="";picker=true},
      "Export layout" to {(context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager).setPrimaryClip(ClipData.newPlainText("Olympus layout",DeskLayout.encode(widgets)));message="Layout copied"},
      "Import layout" to {importLayout=true},
-     "Restore previous layout" to {val old=prefs.getString(if(wide)"landscape-v4"else"portrait-v4",null);if(old!=null)try{save(DeskLayout.decode(old));message="Previous layout restored"}catch(_:Exception){message="Previous layout unavailable"}else message="No previous layout"},"Settings" to {settings=true}))
+     "Restore previous layout" to {val old=prefs.getString(if(wide)"landscape-v6"else"portrait-v6",null);if(old!=null)try{save(DeskLayout.decode(old));gridColumns=if(wide)6 else 4;if(wide)prefs.edit().putInt("landscape-columns-v7",6).apply();message="Previous layout restored"}catch(_:Exception){message="Previous layout unavailable"}else message="No previous layout"},"Settings" to {settings=true}))
    }}
   }
   }
   if(message.isNotEmpty()){Text(message,color=Mint,fontSize=12.sp);LaunchedEffect(message){delay(2200);message=""}}
   BoxWithConstraints(Modifier.weight(1f)){val viewport=maxHeight
   AnimatedContent(targetState=detail.ifEmpty{tab},modifier=Modifier.fillMaxSize(),transitionSpec={if(reducedMotion)EnterTransition.None togetherWith ExitTransition.None else fadeIn(tween(180)) togetherWith fadeOut(tween(120))},label="page"){page->
-   Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(bottom=12.dp)){
+   Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(bottom=8.dp)){
     when{
      page.startsWith("events-history:")->NotificationInbox(page.substringAfter(":"),"History",true){selectedEvent=it;detail="event:${it.id}"}
      page.startsWith("events-source:")->NotificationInbox(page.substringAfter(":")){selectedEvent=it;detail="event:${it.id}"}
      page.startsWith("pod:")->WorkloadScreen(page.removePrefix("pod:")){target->detailHistory=ArrayList(detailHistory+detail);detail=target}
      page.startsWith("monitor:")->MonitorDetailScreen(page.removePrefix("monitor:")){target->detailHistory=ArrayList(detailHistory+detail);detail=target}
      page.startsWith("integration:")->IntegrationDetailScreen(page.removePrefix("integration:")){target->detailHistory=ArrayList(detailHistory+detail);detail=target}
-     page.startsWith("node:")->NodeDetailScreen(page.substringAfter(":"))
+     page.startsWith("node:")->NodeDetailScreen(page.substringAfter(":")){target->detailHistory=ArrayList(detailHistory+detail);detail=target}
      page.startsWith("app:")->ApplicationScreen(page.substringAfter(":")){target->detailHistory=ArrayList(detailHistory+detail);detail=target}
-     page.startsWith("event:")->((LiveRepository.active+LiveRepository.events).find{it.id==page.substringAfter(":")}?:selectedEvent?.takeIf{it.id==page.substringAfter(":")})?.let{NotificationDetail(it){target->detailHistory=ArrayList(detailHistory+detail);detail=target}}?:Text("Event no longer available",color=Muted)
+     page.startsWith("event:")->EventRoute(page.substringAfter(":"),selectedEvent){target->detailHistory=ArrayList(detailHistory+detail);detail=target}
      page=="Attention"->{Title("Needs attention");if(LiveRepository.issues.isEmpty())Text("No current issues",color=Mint);LiveRepository.issues.forEach{item->Column(Modifier.fillMaxWidth().padding(bottom=10.dp).clip(RoundedCornerShape(16.dp)).background(Card).clickable{detail=item.target}.padding(16.dp)){Text(item.title,color=Paper,fontSize=14.sp);Text(item.severity,color=Apricot,fontSize=11.sp)}}}
      page=="Backups"-> {Title("Backups");Info("Destination",when(LiveRepository.backup){true->"Available";false->"Unavailable";null->"Unknown"});Info("Volumes with backup records",if(LiveRepository.backupVolumes==null)"Unavailable"else"${LiveRepository.backupRecorded} / ${LiveRepository.backupVolumes}");Info("Last recorded backup",LiveRepository.backupLast.ifEmpty{"None recorded"})}
      page=="Cluster"->{CompactTabs(listOf("Nodes","Applications"),clusterSection,{clusterSection=it});if(clusterSection=="Nodes")Nodes{detail="node:$it"}else Apps{detail="app:$it"}}
@@ -180,9 +185,11 @@ private fun stamp(value:String)=try{DateTimeFormatter.ofPattern("dd MMM · HH:mm
    }
   }
  }
+
+
  AnimatedVisibility(visible=dockShown&&!editing){Box(Modifier.fillMaxWidth().padding(bottom=8.dp),contentAlignment=Alignment.Center){FloatingDock(when{detail.startsWith("node:")||detail.startsWith("app:")||detail.startsWith("pod:")->"Cluster";detail.startsWith("event:")||detail.startsWith("events-")->"Inbox";detail=="Monitors"||detail.startsWith("monitor:")||detail.startsWith("integration:")->"Services";else->tab}){tab=it;detail="";detailHistory=arrayListOf();editing=false;lastInteraction=System.currentTimeMillis()}}}
- if(!dockShown&&!editing)Box(Modifier.fillMaxWidth().height(14.dp).clickable{lastInteraction=System.currentTimeMillis()},contentAlignment=Alignment.Center){Box(Modifier.size(38.dp,3.dp).background(Muted.copy(alpha=.4f),RoundedCornerShape(4.dp)))}
  }
+ if(!dockShown&&!editing)Box(Modifier.align(Alignment.BottomCenter).fillMaxWidth().height(14.dp).clickable{lastInteraction=System.currentTimeMillis()},contentAlignment=Alignment.Center){Box(Modifier.size(38.dp,3.dp).background(Muted.copy(alpha=.4f),RoundedCornerShape(4.dp)))}
  }
  }
  }
@@ -196,7 +203,7 @@ private fun stamp(value:String)=try{DateTimeFormatter.ofPattern("dd MMM · HH:mm
    "Add widget"->{tab="Home";detail="";picker=true}
    "Export layout"->{(context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager).setPrimaryClip(ClipData.newPlainText("Olympus layout",DeskLayout.encode(widgets)));message="Layout copied"}
    "Import layout"->importLayout=true
-   "Reset this layout"->{save(DeskLayout.defaults(wide));tab="Home";detail=""}
+   "Reset this layout"->{save(DeskLayout.defaults(wide));gridColumns=if(wide)8 else 4;if(wide)prefs.edit().putInt("landscape-columns-v7",8).apply();tab="Home";detail=""}
   }},{settings=false},focusMode,{focusMode=it})
 
 }
@@ -212,14 +219,16 @@ private fun stamp(value:String)=try{DateTimeFormatter.ofPattern("dd MMM · HH:mm
  }
 }
 @Composable private fun WidgetGrid(items:List<DeskWidget>,wide:Boolean,editing:Boolean,selectedId:String,reducedMotion:Boolean,viewport:androidx.compose.ui.unit.Dp,fillViewport:Boolean,edit:()->Unit,save:(List<DeskWidget>)->Unit,open:(String)->Unit,configure:(DeskWidget)->Unit){
- val columns=if(wide)6 else 4
+ val columns=LocalGridColumns.current
  val latest by rememberUpdatedState(items)
  var pitchX by remember{mutableFloatStateOf(100f)}
  var pitchY by remember{mutableFloatStateOf(100f)}
  val cells=DeskLayout.place(items,columns)
  val gapDp=LocalGridGap.current.dp
  val rows=cells.maxOfOrNull{it.row+it.height}?:0
- val unit=deskRowHeight(viewport.value,gapDp.value,rows,wide,fillViewport).dp
+ val statusStrip=wide&&columns==8&&rows==3&&cells.any{it.row==2}&&cells.filter{it.row<2}.all{it.row+it.height<=2}&&cells.filter{it.row==2}.all{it.widget.kind in listOf("Nodes","Monitors","Events")&&it.height==1}
+ val stripHeight=78.dp
+ val unit=if(statusStrip)((viewport-gapDp*2-stripHeight)/2).coerceAtLeast(76.dp)else deskRowHeight(viewport.value,gapDp.value,rows,wide,fillViewport).dp
  if(items.isEmpty())DeskAction("Add widget",true){edit()}
  Layout(content={cells.forEach{cell->val widget=cell.widget
   var delta by remember(widget.id){mutableStateOf(Offset.Zero)}
@@ -235,9 +244,9 @@ private fun stamp(value:String)=try{DateTimeFormatter.ofPattern("dd MMM · HH:mm
  }},modifier=Modifier.fillMaxWidth()){measurables,constraints->
   val gap=gapDp.roundToPx();val cellWidth=(constraints.maxWidth-gap*(columns-1))/columns;val rowHeight=unit.roundToPx()
   pitchX=(cellWidth+gap).toFloat();pitchY=(rowHeight+gap).toFloat()
-  val placeables=measurables.mapIndexed{index,m->val c=cells[index];m.measure(Constraints.fixed(cellWidth*c.width+gap*(c.width-1),rowHeight*c.height+gap*(c.height-1)))}
+  val placeables=measurables.mapIndexed{index,m->val c=cells[index];m.measure(Constraints.fixed(cellWidth*c.width+gap*(c.width-1),(if(statusStrip&&c.row==2)stripHeight.roundToPx()else rowHeight*c.height+gap*(c.height-1))))}
   val rows=cells.maxOfOrNull{it.row+it.height}?:0
-  layout(constraints.maxWidth,(rows*rowHeight+gap*(rows-1)).coerceAtLeast(0)){placeables.forEachIndexed{i,p->val c=cells[i];p.placeRelative(c.column*(cellWidth+gap),c.row*(rowHeight+gap))}}
+  layout(constraints.maxWidth,(if(statusStrip)2*rowHeight+stripHeight.roundToPx()+gap*2 else rows*rowHeight+gap*(rows-1)).coerceAtLeast(0)){placeables.forEachIndexed{i,p->val c=cells[i];p.placeRelative(c.column*(cellWidth+gap),c.row*(rowHeight+gap))}}
  }
 }
 
@@ -277,8 +286,8 @@ internal fun destination(w:DeskWidget)=when(w.kind){"Clock"->"Home";"Monitors"->
  var kind by remember{mutableStateOf(initial?.kind?:"CPU")};var target by remember{mutableStateOf(initial?.target?:"")}
  var width by remember{mutableIntStateOf(initial?.width?:2)};var height by remember{mutableIntStateOf(initial?.height?:1)}
  var label by remember{mutableStateOf(initial?.label?:"")};var fields by remember{mutableStateOf(initial?.fields?:emptyList())}
- var configuring by remember{mutableStateOf(initial!=null)};var sourceOpen by remember{mutableStateOf(false)};var search by remember{mutableStateOf("")}
- val wide=wideWindow();val columns=if(wide)6 else 4
+ var category by remember{mutableStateOf("All")};var gallerySearch by remember{mutableStateOf("")};var configuring by remember{mutableStateOf(initial!=null)};var sourceOpen by remember{mutableStateOf(false)};var search by remember{mutableStateOf("")}
+ val wide=wideWindow();val columns=LocalGridColumns.current
  val targets=when(kind){"Service"->LiveRepository.integrations.map{it.name};"App"->LiveRepository.services.map{it.name};"Node"->LiveRepository.nodes.map{it.name};"Events","Alerts"->listOf("All")+(LiveRepository.active+LiveRepository.events).map{it.source}.distinct();else->emptyList()}
  LaunchedEffect(kind,targets){if(targets.isNotEmpty()&&target !in targets)target=targets.first()}
  val preview=DeskWidget(initial?.id?:"preview",kind,target,width,height,label,fields,initial?.x?:-1,initial?.y?:-1)
@@ -321,7 +330,11 @@ internal fun destination(w:DeskWidget)=when(w.kind){"Clock"->"Home";"Monitors"->
     }
     if(!configuring){
      Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(vertical=10.dp),verticalArrangement=Arrangement.spacedBy(10.dp)){
-      DeskLayout.kinds.chunked(if(wide)4 else 2).forEach{row->Row(horizontalArrangement=Arrangement.spacedBy(10.dp)){
+      if(wide)Row(verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(12.dp)){Box(Modifier.weight(1f)){DeskSearch(gallerySearch,{gallerySearch=it},"Find a widget")};Box(Modifier.width(360.dp)){DeskSegments(listOf("All","Cluster","Monitoring","Integrations"),category,{category=it})}}
+      else{DeskSearch(gallerySearch,{gallerySearch=it},"Find a widget");DeskSegments(listOf("All","Cluster","Monitoring","Integrations"),category,{category=it})}
+      val catalog=DeskLayout.kinds.filter{k->(gallerySearch.isBlank()||k.contains(gallerySearch,true)||(k=="Clock"&&"Welcome".contains(gallerySearch,true)))&&(category=="All"||when(category){"Cluster"->k in listOf("CPU","Memory","Nodes","Node","GitOps","App","Backups");"Monitoring"->k in listOf("Monitors","Attention","Alerts","Events");else->k in listOf("Service","Downloads","Clock")})}
+      if(catalog.isEmpty())DeskEmpty("No matching widgets","Try another name or category.")
+      catalog.chunked(if(wide)4 else 2).forEach{row->Row(horizontalArrangement=Arrangement.spacedBy(10.dp)){
        row.forEach{k->Column(Modifier.weight(1f).clip(RoundedCornerShape(18.dp)).background(Card).clickable{kind=k;target="";fields=emptyList();height=if(k=="Clock")2 else 1;configuring=true}.padding(10.dp),verticalArrangement=Arrangement.spacedBy(8.dp)){
         Box(Modifier.fillMaxWidth().height(112.dp).clip(RoundedCornerShape(14.dp)).background(widgetColor(k)).padding(10.dp)){WidgetBody(DeskWidget("preview-$k",k,width=2,height=if(k=="Clock")1 else 1),Modifier.fillMaxSize())}
         Text(when(k){"Events"->"Recent activity";"Alerts"->"Active alerts";"Clock"->"Welcome";else->k},color=Paper,fontSize=13.sp,fontWeight=FontWeight.Medium)
@@ -338,18 +351,19 @@ internal fun destination(w:DeskWidget)=when(w.kind){"Clock"->"Home";"Monitors"->
  }
 }
 internal fun welcomeColor():Color = DeskColors.cobalt
-private fun widgetColor(kind:String)=when(kind){"Clock"->welcomeColor();"GitOps"->Color(0xFFBBB6E1);"Monitors","Attention"->Apricot;else->Card}
+private fun attentionActive()=LiveRepository.issues.isNotEmpty()
+private fun widgetColor(kind:String)=when(kind){"Clock"->welcomeColor();"GitOps"->DeskColors.lilac;"Attention"->if(attentionActive())DeskColors.apricot else Card;else->Card}
 @Composable internal fun Spark(values:List<Float>,color:Color,percent:Boolean=false){if(values.size<2){Text("Collecting trend…",color=Muted,fontSize=10.sp);return};Canvas(Modifier.fillMaxWidth().height(24.dp)){val low=0f;val range=if(percent)100f else values.max().coerceAtLeast(.1f);val path=Path();values.forEachIndexed{i,value->val x=i.toFloat()/(values.size-1)*size.width;val y=size.height-(value.coerceIn(0f,range)-low)/range*(size.height-4)-2;if(i==0)path.moveTo(x,y)else path.lineTo(x,y)};drawPath(path,color,style=androidx.compose.ui.graphics.drawscope.Stroke(2.dp.toPx()))}}
 
 @Composable private fun Title(value:String){Text(value,color=Paper,fontSize=25.sp,fontWeight=FontWeight.SemiBold,modifier=Modifier.padding(vertical=12.dp))}
 @Composable private fun Info(label:String,value:String){Row(Modifier.fillMaxWidth().padding(vertical=8.dp),horizontalArrangement=Arrangement.spacedBy(16.dp)){Text(label,color=Muted,fontSize=12.sp,modifier=Modifier.weight(1f));Text(value,color=Paper,fontSize=12.sp,modifier=Modifier.weight(1.6f))}}
-@Composable internal fun Usage(label:String,value:Float?,color:Color){Row(Modifier.fillMaxWidth().padding(top=12.dp,bottom=6.dp),horizontalArrangement=Arrangement.SpaceBetween){Text(label,color=Muted,fontSize=12.sp);Text("${value.fmt()}%",color=Paper,fontSize=12.sp)};if(value!=null)LinearProgressIndicator(progress={(value/100).coerceIn(0f,1f)},color=color,trackColor=Color(0xFF3C4250),modifier=Modifier.fillMaxWidth().height(5.dp))}
+@Composable internal fun Usage(label:String,value:Float?,color:Color){Row(Modifier.fillMaxWidth().padding(top=5.dp,bottom=4.dp),horizontalArrangement=Arrangement.SpaceBetween){Text(label,color=Muted,fontSize=12.sp);Text("${value.fmt()}%",color=Paper,fontSize=12.sp)};if(value!=null)LinearProgressIndicator(progress={(value/100).coerceIn(0f,1f)},color=color,trackColor=Color(0xFF3C4250),modifier=Modifier.fillMaxWidth().height(3.dp),drawStopIndicator={})}
 @Composable private fun Nodes(open:(String)->Unit){
  val wide=wideWindow()
 
- Usage("Total CPU",LiveRepository.cpuPercent,Cobalt);Usage("Total memory",LiveRepository.memoryPercent,Lilac)
- LiveRepository.nodes.chunked(if(wide)2 else 1).forEach{row->Row(Modifier.fillMaxWidth().padding(top=12.dp),horizontalArrangement=Arrangement.spacedBy(12.dp)){row.forEach{node->Column(Modifier.weight(1f).clip(RoundedCornerShape(20.dp)).background(Card).clickable{open(node.name)}.padding(16.dp)){
-  Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween){Text(node.name,color=Paper,fontSize=19.sp);Text(if(node.ready)"Ready ↗"else"Not ready ↗",color=if(node.ready)Mint else Apricot,fontSize=12.sp)}
+ Row(horizontalArrangement=Arrangement.spacedBy(16.dp)){Box(Modifier.weight(1f)){Usage("Cluster CPU",LiveRepository.cpuPercent,Cobalt)};Box(Modifier.weight(1f)){Usage("Cluster memory",LiveRepository.memoryPercent,Lilac)}}
+ LiveRepository.nodes.chunked(if(wide)2 else 1).forEach{row->Row(Modifier.fillMaxWidth().padding(top=8.dp),horizontalArrangement=Arrangement.spacedBy(10.dp)){row.forEach{node->Column(Modifier.weight(1f).clip(RoundedCornerShape(20.dp)).background(Card).clickable{open(node.name)}.padding(12.dp)){
+  Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween){Text(node.name,color=Paper,fontSize=16.sp);Text(if(node.ready)"Ready ↗"else"Not ready ↗",color=if(node.ready)Mint else Apricot,fontSize=12.sp)}
   Usage("CPU · ${node.cores} cores",if(node.available)node.cpuPercent else null,Cobalt)
   Usage("Memory · ${node.memoryUsedGiB.fmt()} / ${node.memoryTotalGiB.fmt()} GiB",if(node.available)node.memoryUsedGiB/node.memoryTotalGiB*100 else null,Lilac)
  }}}}
@@ -359,16 +373,15 @@ private val iconCache=android.util.LruCache<String,android.graphics.Bitmap>(40)
 @Composable private fun Apps(open:(String)->Unit){
  var search by rememberSaveable{mutableStateOf("")}
  var filter by rememberSaveable{mutableStateOf("All")}
- Row(Modifier.fillMaxWidth().padding(vertical=6.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(12.dp)){
-  androidx.compose.foundation.text.BasicTextField(value=search,onValueChange={search=it},singleLine=true,textStyle=androidx.compose.ui.text.TextStyle(color=Paper,fontSize=13.sp),modifier=Modifier.weight(1f).clip(RoundedCornerShape(13.dp)).background(Card).padding(horizontal=14.dp,vertical=12.dp),decorationBox={inner->Box{if(search.isEmpty())Text("Search apps",color=Muted,fontSize=13.sp);inner()}})
-  Text("${LiveRepository.services.size} apps",color=Muted,fontSize=11.sp)
- }
- CompactTabs(listOf("All","Needs attention"),filter,{filter=it})
+ @Composable fun searchField(){DeskSearch(search,{search=it},"Search applications")}
+ if(wideWindow())Row(verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(12.dp)){
+  Box(Modifier.weight(1f)){searchField()};Box(Modifier.width(218.dp)){CompactTabs(listOf("All","Needs attention"),filter,{filter=it})};Text("${LiveRepository.services.size}",color=Muted,fontSize=11.sp)
+ }else{searchField();CompactTabs(listOf("All","Needs attention"),filter,{filter=it})}
  val apps=LiveRepository.services.filter{it.name.contains(search,true)&&(filter=="All"||it.health!="Healthy"||it.sync!="Synced")}
  val columns=if(wideWindow())3 else 2
  if(apps.isEmpty())Text("No matching apps",color=Muted,modifier=Modifier.padding(16.dp))
  apps.chunked(columns).forEach{row->Row(Modifier.fillMaxWidth().padding(top=8.dp),horizontalArrangement=Arrangement.spacedBy(8.dp)){
-  row.forEach{app->Column(Modifier.weight(1f).height(138.dp).clip(RoundedCornerShape(17.dp)).background(Card).clickable{open(app.name)}.padding(12.dp),verticalArrangement=Arrangement.spacedBy(7.dp)){
+  row.forEach{app->Column(Modifier.weight(1f).heightIn(min=110.dp).clip(RoundedCornerShape(17.dp)).background(Card).clickable{open(app.name)}.padding(12.dp),verticalArrangement=Arrangement.spacedBy(5.dp)){
    Row(verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(8.dp)){AppIcon(app.icon,app.name);Text(app.name,color=Paper,fontWeight=FontWeight.Medium,fontSize=13.sp,maxLines=1,overflow=TextOverflow.Ellipsis)}
    Row(verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(5.dp)){Box(Modifier.size(5.dp).background(if(app.health=="Healthy")Mint else Apricot,RoundedCornerShape(4.dp)));Text(app.health,color=if(app.health=="Healthy")Mint else Apricot,fontSize=11.sp);Text(app.sync,color=Muted,fontSize=10.sp,maxLines=1)}
    Text("${app.ready}/${app.pods} pods · ${app.namespace}",color=Muted,fontSize=10.sp,maxLines=1,overflow=TextOverflow.Ellipsis)
@@ -380,15 +393,22 @@ private val iconCache=android.util.LruCache<String,android.graphics.Bitmap>(40)
 @Composable internal fun EventRow(event:LabEvent,click:()->Unit){Column(Modifier.fillMaxWidth().padding(top=10.dp).clip(RoundedCornerShape(18.dp)).background(Card).clickable(onClick=click).padding(16.dp)){Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween){Text(event.source,color=Lilac,fontSize=11.sp);Text(stamp(event.time),color=Muted,fontSize=10.sp)};Text(event.title,color=Paper,fontSize=15.sp,modifier=Modifier.padding(vertical=8.dp));Text(event.kind+" ↗",color=Apricot,fontSize=11.sp)}}
 
 @Composable private fun EditorInspector(widget:DeskWidget,items:List<DeskWidget>,wide:Boolean,save:(List<DeskWidget>)->Unit,configure:()->Unit,remove:()->Unit){
+ val columns=LocalGridColumns.current
  Column(Modifier.fillMaxWidth().padding(vertical=8.dp).clip(RoundedCornerShape(20.dp)).background(Card).padding(12.dp),verticalArrangement=Arrangement.spacedBy(8.dp)){
   Text(widget.label.ifBlank{if(widget.kind=="Clock")"Welcome"else widget.kind},color=Paper,fontSize=18.sp,fontWeight=FontWeight.Medium)
-  Box(Modifier.fillMaxWidth().height(100.dp).clip(RoundedCornerShape(16.dp)).background(widgetColor(widget.kind)).padding(10.dp)){WidgetBody(widget,Modifier.fillMaxSize())}
+  Layout(content={Box(Modifier.size((widget.width*100).dp,(widget.height*112).dp).clip(RoundedCornerShape(16.dp)).background(widgetColor(widget.kind)).padding(12.dp)){WidgetBody(widget,Modifier.fillMaxSize())}},modifier=Modifier.fillMaxWidth().height(116.dp)) {children,constraints->
+   val rawWidth=(widget.width*100).dp.roundToPx();val rawHeight=(widget.height*112).dp.roundToPx()
+   val item=children.single().measure(Constraints.fixed(rawWidth,rawHeight))
+   val scale=minOf(constraints.maxWidth.toFloat()/rawWidth,constraints.maxHeight.toFloat()/rawHeight,1f)
+   layout(constraints.maxWidth,constraints.maxHeight){item.placeWithLayer(((constraints.maxWidth-rawWidth*scale)/2).toInt(),0){scaleX=scale;scaleY=scale;transformOrigin=androidx.compose.ui.graphics.TransformOrigin(0f,0f)}}
+  }
+
   Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(6.dp)){
    listOf("Width" to widget.width,"Height" to widget.height).forEach{(name,value)->Column(Modifier.weight(1f)){
     Text(name,color=Muted,fontSize=11.sp)
     Row(verticalAlignment=Alignment.CenterVertically){
-     val min=if(name=="Width"&&!wide)2 else 1;val max=if(name=="Width")if(wide)6 else 4 else 4
-     fun change(v:Int){save(DeskLayout.resize(items,widget.id,if(name=="Width")v else widget.width,if(name=="Height")v else widget.height,if(wide)6 else 4))}
+     val min=if(name=="Width"&&!wide)2 else 1;val max=if(name=="Width")columns else 4
+     fun change(v:Int){save(DeskLayout.resize(items,widget.id,if(name=="Width")v else widget.width,if(name=="Height")v else widget.height,columns))}
      IconButton(onClick={change(value-1)},enabled=value>min,modifier=Modifier.size(40.dp).semantics{contentDescription="Decrease $name"}){Text("−",color=Cobalt,fontSize=22.sp)}
      Text("$value",color=Paper,fontSize=15.sp)
      IconButton(onClick={change(value+1)},enabled=value<max,modifier=Modifier.size(40.dp).semantics{contentDescription="Increase $name"}){Text("+",color=Cobalt,fontSize=22.sp)}
@@ -414,9 +434,9 @@ private val iconCache=android.util.LruCache<String,android.graphics.Bitmap>(40)
  val cpu=w.kind=="CPU";val value=if(cpu)LiveRepository.cpuPercent else LiveRepository.memoryPercent
  val values=LiveRepository.history[if(cpu)"cpu"else"memory"].orEmpty()
  Column(modifier.fillMaxSize(),verticalArrangement=Arrangement.spacedBy(2.dp)){
-  Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween){Text(w.label.ifBlank{w.kind},color=Muted,fontSize=12.sp);Text(if(!LiveRepository.state.startsWith("Live"))"Cached"else"Recent",color=Muted,fontSize=10.sp)}
+  Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween){Text(w.label.ifBlank{w.kind},color=Muted,fontSize=12.sp);if(w.width>2)Text(if(!LiveRepository.state.startsWith("Live"))"Cached"else"Recent",color=Muted,fontSize=10.sp)}
   Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(8.dp)){
-   Text(if(value==null)"—"else"${value.fmt()}%",color=Paper,fontSize=26.sp,lineHeight=29.sp,fontWeight=FontWeight.SemiBold)
+   Text(if(value==null)"—"else"${value.fmt()}%",color=Paper,fontSize=if(w.width<2)20.sp else 26.sp,lineHeight=29.sp,fontWeight=FontWeight.SemiBold)
    if(w.width>=2)Text(if(cpu)if(value==null)"Usage unavailable"else"${(value/100f*LiveRepository.totalCores).fmt()} / ${LiveRepository.totalCores} cores"else"${LiveRepository.usedMemory.fmt()} / ${LiveRepository.totalMemory.fmt()} GiB",color=Muted,fontSize=10.sp,lineHeight=12.sp,maxLines=2)
   }
   if(values.size<2)Text("Collecting trend…",color=Muted,fontSize=10.sp)else Canvas(Modifier.fillMaxWidth().weight(1f).heightIn(min=12.dp).semantics{contentDescription="${w.kind} recent samples, zero to one hundred percent"}){
@@ -427,17 +447,17 @@ private val iconCache=android.util.LruCache<String,android.graphics.Bitmap>(40)
 }
 
 @Composable private fun SummaryWidget(w:DeskWidget,modifier:Modifier){
- val pastel=w.kind in listOf("Attention","GitOps","Monitors");val fg=if(pastel)Color(0xFF29233D)else Paper;val sub=if(pastel)fg.copy(alpha=.8f)else Muted
+ val pastel=w.kind=="GitOps"||(w.kind=="Attention"&&attentionActive());val fg=if(pastel)Color(0xFF29233D)else Paper;val sub=if(pastel)fg.copy(alpha=.8f)else Muted
  val event=LiveRepository.active.firstOrNull{needsAttention(it)}
  val latest=LiveRepository.events.firstOrNull{(w.target.isBlank()||w.target=="All"||it.source==w.target)&&(LocalShowTests.current||!(it.kind=="Test"||it.source=="Test"||it.title=="Test"))}
  val known=LiveRepository.lastSuccess>0L
- val value=if(!known)"—"else when(w.kind){"Attention"->event?.let(::incidentTitle)?:LiveRepository.issues.firstOrNull()?.title?:if(LiveRepository.state.startsWith("Live")&&LiveRepository.signals.isNotEmpty()&&LiveRepository.signals.values.all{it})"No active issues"else"Unconfirmed";"GitOps"->"${LiveRepository.services.count{it.health=="Healthy"&&it.sync=="Synced"}} / ${LiveRepository.services.size}";"Nodes"->"${LiveRepository.nodes.count{it.ready}} / ${LiveRepository.nodes.size}";"Monitors"->"${LiveRepository.monitorsUp?:"—"} / ${LiveRepository.monitorsTotal?:"—"}";else->latest?.let(::incidentTitle)?:"No recent activity"}
- val supporting=if(!known)"Connecting…"else when(w.kind){"Attention"->event?.let{"${it.state} · ${it.kind} · ${it.node.ifBlank{it.source}}"}?:"${LiveRepository.active.count{it.state=="Firing"&&!isInformational(it.kind)}} firing · ${LiveRepository.active.count{it.state=="Pending"&&!isInformational(it.kind)}} pending";"GitOps"->"Healthy & synced";"Nodes"->"Nodes ready";"Monitors"->"Monitors up";else->latest?.let{localTime(it.resolvedAt.ifBlank{it.time})}?:"No records"}
+ val value=if(!known)"—"else when(w.kind){"Attention"->event?.let(::incidentTitle)?:LiveRepository.issues.firstOrNull()?.title?:if(LiveRepository.state.startsWith("Live")&&LiveRepository.signals.isNotEmpty()&&LiveRepository.signals.values.all{it})"All clear"else"Unconfirmed";"GitOps"->"${LiveRepository.services.count{it.health=="Healthy"&&it.sync=="Synced"}} / ${LiveRepository.services.size}";"Nodes"->"${LiveRepository.nodes.count{it.ready}} / ${LiveRepository.nodes.size}";"Monitors"->"${LiveRepository.monitorsUp?:"—"} / ${LiveRepository.monitorsTotal?:"—"}";else->latest?.let(::incidentTitle)?:"No recent activity"}
+ val supporting=if(!known)"Connecting…"else when(w.kind){"Attention"->event?.let{"${it.state} · ${it.kind} · ${it.node.ifBlank{it.source}}"}?:"${LiveRepository.active.count{it.state=="Firing"&&!isInformational(it.kind)}} firing · ${LiveRepository.active.count{it.state=="Pending"&&!isInformational(it.kind)}} pending";"GitOps"->"Healthy & synced";"Nodes"->"Nodes ready";"Monitors"->"Checks up";else->latest?.let{listOf(it.state,it.node.ifBlank{it.namespace}).filter{v->v.isNotBlank()}.joinToString(" · ")+" · "+localTime(it.resolvedAt.ifBlank{it.time})}?:"No records"}
  BoxWithConstraints(modifier.fillMaxSize()){
   val compact=maxHeight<80.dp;val roomy=maxHeight>110.dp
   Column(Modifier.fillMaxSize(),verticalArrangement=Arrangement.spacedBy(if(compact)1.dp else 6.dp)){
-   Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically){Text(w.label.ifBlank{when(w.kind){"Attention"->"Needs attention";"Events"->"Recent activity";else->w.kind}},color=sub,fontSize=11.sp,lineHeight=13.sp,modifier=Modifier.weight(1f));if(w.kind=="GitOps")LabGlyph("GitOps",fg,16.dp)}
-   Text(value,color=fg,fontSize=if(value.length>12)if(compact)16.sp else 21.sp else if(compact)23.sp else 32.sp,lineHeight=if(compact)25.sp else 36.sp,maxLines=1,overflow=TextOverflow.Ellipsis,fontWeight=FontWeight.SemiBold)
+   Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically){Text(w.label.ifBlank{when(w.kind){"Attention"->if(attentionActive())"Needs attention"else"Cluster status";"Events"->"Recent activity";else->w.kind}},color=sub,fontSize=11.sp,lineHeight=13.sp,modifier=Modifier.weight(1f));if(w.kind=="GitOps")LabGlyph("GitOps",fg,16.dp)}
+   Text(value,color=fg,fontSize=if(w.width<2)17.sp else if(value.length>12)if(compact)14.sp else 17.sp else if(compact)23.sp else 32.sp,lineHeight=if(compact)25.sp else 36.sp,maxLines=1,overflow=TextOverflow.Ellipsis,fontWeight=FontWeight.SemiBold)
    Text(supporting,color=sub,fontSize=10.sp,lineHeight=12.sp,maxLines=1,overflow=TextOverflow.Ellipsis)
    if(roomy&&w.kind=="Nodes")Row(Modifier.fillMaxWidth().padding(top=4.dp),horizontalArrangement=Arrangement.spacedBy(5.dp)){LiveRepository.nodes.forEach{node->Column(Modifier.weight(1f)){Box(Modifier.fillMaxWidth().height(4.dp).background(if(node.ready)Mint else Apricot,RoundedCornerShape(3.dp)));Text(node.name,color=sub,fontSize=9.sp,maxLines=1)}}}
   }

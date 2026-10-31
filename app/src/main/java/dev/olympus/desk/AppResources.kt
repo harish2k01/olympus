@@ -55,19 +55,20 @@ private fun shortKind(kind:String)=when(kind){"Application"->"APP";"Deployment"-
  CompactTabs(listOf("Resources","Usage","Events"),tab,{tab=it}){scope.launch{Pairing.read(context)?.let{LiveRepository.loadApp(it,name)}}}
 
  when(tab){
-  "Resources"->{val details=LiveRepository.appDetails;if(details==null){Text(if(LiveRepository.appError)"Resource map unavailable"else"Loading resources…",color=TreeMuted,modifier=Modifier.padding(18.dp))}else{if(details.optBoolean("partial"))Text("Some resource data is unavailable",color=TreeWarm,fontSize=11.sp);ResourceTree(details)}}
+  "Resources"->{val details=LiveRepository.appDetails;if(details==null){Text(if(LiveRepository.appError)"Resource map unavailable"else"Loading resources…",color=TreeMuted,modifier=Modifier.padding(18.dp))}else{if(details.optBoolean("partial"))Text("Some resource data is unavailable",color=TreeWarm,fontSize=11.sp);ResourceTree(details,open)}}
   "Usage"->{DetailTable("Workload usage",listOf("Metric","Value"),listOf(240,250),listOf(listOf("CPU",if(app.cpu==null)"Unavailable"else"${(app.cpu*1000).toInt()}m"),listOf("Memory",if(app.memory==null)"Unavailable"else"${app.memory.toInt()} MiB"),listOf("Ready pods","${app.ready}/${app.pods}")));Text("CPU",color=TreeMuted,modifier=Modifier.padding(top=20.dp));Spark(LiveRepository.history["app:$name:cpu"]?:emptyList(),TreeBlue);Text("Memory",color=TreeMuted,modifier=Modifier.padding(top=20.dp));Spark(LiveRepository.history["app:$name:memory"]?:emptyList(),Color(0xFFCDC5FF))}
   "Events"->{val events=LiveRepository.events.filter{it.source.contains(name,true)||it.detail.contains(name,true)};if(events.isEmpty())Text("No matching events",color=TreeMuted,modifier=Modifier.padding(18.dp));events.forEach{event->EventRow(event){open("event:${event.id}")}}}
  }
 }
 
-@Composable private fun ResourceTree(details:JSONObject){
+@Composable private fun ResourceTree(details:JSONObject,open:(String)->Unit){
  val values=details.optJSONArray("nodes")?:return
  val nodes=(0 until values.length()).map{val item=values.getJSONObject(it);val parents=item.optJSONArray("parents");ResourceNode(item.getString("id"),item.getString("kind"),item.getString("name"),item.optString("namespace"),item.optString("health"),item.optString("sync"),(0 until (parents?.length()?:0)).map{parents!!.getString(it)})}
- var presentation by rememberSaveable{mutableStateOf("Map")}
- CompactTabs(listOf("Map","List"),presentation,{presentation=it})
+ val wide=wideWindow()
+ var presentation by rememberSaveable(wide){mutableStateOf(if(wide)"Fit"else"List")}
+ CompactTabs(listOf("Fit","Map","List"),presentation,{presentation=it})
  if(presentation=="List"){
-  nodes.sortedWith(compareBy({it.kind},{it.name})).forEach{node->Column(Modifier.fillMaxWidth().padding(vertical=8.dp)){
+  nodes.sortedWith(compareBy({it.kind},{it.name})).forEach{node->Column(Modifier.fillMaxWidth().clickable{if(node.kind=="Pod")open("pod:${node.namespace}/${node.name}@")}.padding(vertical=8.dp)){
    Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween){Text(node.kind,color=TreeBlue,fontSize=12.sp);Text(node.health.ifBlank{node.sync},color=if(node.health=="Healthy")TreeGreen else TreeMuted,fontSize=12.sp)}
    Text(node.name,color=TreePaper,fontSize=14.sp)
    if(node.namespace.isNotBlank())Text(node.namespace,color=TreeMuted,fontSize=11.sp)
@@ -79,21 +80,30 @@ private fun shortKind(kind:String)=when(kind){"Application"->"APP";"Deployment"-
  repeat(nodes.size.coerceAtMost(20)){nodes.forEach{node->if(node.id !in levels&&node.parents.any{it in levels})levels[node.id]=(node.parents.mapNotNull{levels[it]}.maxOrNull()?:0)+1}}
  val layers=nodes.groupBy{levels[it.id]?:0}.toSortedMap().mapValues{(_,list)->list.sortedWith(compareBy({it.kind},{it.name}))}
  val maxRows=layers.values.maxOfOrNull{it.size}?:1
- val points=mutableMapOf<String,Pair<Int,Int>>();layers.forEach{(level,list)->list.forEachIndexed{index,node->points[node.id]=level*174 to (index*66+if(level==0)(maxRows-1)*33 else 0)}}
+ val points=mutableMapOf<String,Pair<Int,Int>>();layers.forEach{(level,list)->list.forEachIndexed{index,node->points[node.id]=level*174 to (index*(if(presentation=="Fit")38 else 66)+if(level==0)(maxRows-1)*(if(presentation=="Fit")19 else 33) else 0)}}
  var selected by remember{mutableStateOf<ResourceNode?>(null)}
- val width=((layers.keys.maxOrNull()?:0)+1)*174+16;val height=maxRows*66+24
- Box(Modifier.fillMaxWidth().height(if(wideWindow())250.dp else 330.dp).padding(top=6.dp).clip(RoundedCornerShape(18.dp)).background(Color(0xFF1B202A)).border(1.dp,Color(0xFF354052),RoundedCornerShape(18.dp))){
-  Box(Modifier.fillMaxSize().horizontalScroll(rememberScrollState()).verticalScroll(rememberScrollState())){
-   Box(Modifier.requiredSize(width.dp,height.dp).padding(12.dp)){
+ val width=((layers.keys.maxOrNull()?:0)+1)*174+16;val nodeHeight=if(presentation=="Fit")34 else 50
+ val height=maxRows*(if(presentation=="Fit")38 else 66)+16
+ @Composable fun graph(){Box(Modifier.requiredSize(width.dp,height.dp).padding(12.dp)){
     Canvas(Modifier.matchParentSize()){
-     nodes.forEach{node->val end=points[node.id]?:return@forEach;node.parents.forEach{parent->val start=points[parent]?:return@forEach;val a=Offset((start.first+146).dp.toPx(),(start.second+25).dp.toPx());val b=Offset(end.first.dp.toPx(),(end.second+25).dp.toPx());val path=Path().apply{moveTo(a.x,a.y);cubicTo(a.x+18.dp.toPx(),a.y,b.x-18.dp.toPx(),b.y,b.x,b.y)};drawPath(path,Color(0xFF66758D),style=androidx.compose.ui.graphics.drawscope.Stroke(1.dp.toPx()))}}
+     nodes.forEach{node->val end=points[node.id]?:return@forEach;node.parents.forEach{parent->val start=points[parent]?:return@forEach;val a=Offset((start.first+146).dp.toPx(),(start.second+nodeHeight/2).dp.toPx());val b=Offset(end.first.dp.toPx(),(end.second+nodeHeight/2).dp.toPx());val path=Path().apply{moveTo(a.x,a.y);cubicTo(a.x+18.dp.toPx(),a.y,b.x-18.dp.toPx(),b.y,b.x,b.y)};drawPath(path,Color(0xFF66758D),style=androidx.compose.ui.graphics.drawscope.Stroke(1.dp.toPx()))}}
     }
-    nodes.forEach{node->val point=points[node.id]!!;Column(Modifier.offset(point.first.dp,point.second.dp).size(146.dp,50.dp).clip(RoundedCornerShape(12.dp)).background(Color(0xFF293244)).border(1.dp,if(node.health=="Healthy")TreeGreen.copy(alpha=.5f)else Color(0xFF52607A),RoundedCornerShape(12.dp)).clickable{selected=node}.padding(9.dp)){
-     Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween){Text(shortKind(node.kind),color=TreeBlue,fontSize=9.sp,fontWeight=FontWeight.Bold);Text(node.health.ifBlank{node.sync},color=if(node.health=="Healthy")TreeGreen else TreeMuted,fontSize=9.sp,maxLines=1)}
-     Text(node.name,color=TreePaper,fontSize=10.sp,maxLines=1,overflow=TextOverflow.Ellipsis,modifier=Modifier.padding(top=5.dp))
+    nodes.forEach{node->val point=points[node.id]!!;Column(Modifier.offset(point.first.dp,point.second.dp).size(146.dp,nodeHeight.dp).clip(RoundedCornerShape(12.dp)).background(Color(0xFF293244)).border(1.dp,if(node.health=="Healthy")TreeGreen.copy(alpha=.5f)else Color(0xFF52607A),RoundedCornerShape(12.dp)).clickable{selected=node}.padding(if(presentation=="Fit")5.dp else 9.dp)){
+     Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween){Text(shortKind(node.kind),color=TreeBlue,fontSize=9.sp,lineHeight=10.sp,fontWeight=FontWeight.Bold);Text(node.health.ifBlank{node.sync},color=if(node.health=="Healthy")TreeGreen else TreeMuted,fontSize=9.sp,lineHeight=10.sp,maxLines=1)}
+     Text(node.name,color=TreePaper,fontSize=10.sp,lineHeight=12.sp,maxLines=1,overflow=TextOverflow.Ellipsis,modifier=Modifier.padding(top=if(presentation=="Fit")2.dp else 5.dp))
     }}
-   }
+   }}
+ if(presentation=="Fit"){
+  androidx.compose.ui.layout.Layout(content={graph()},modifier=Modifier.fillMaxWidth().height(if(wide)190.dp else 300.dp).clip(RoundedCornerShape(16.dp)).background(DeskColors.surface)) { children,constraints->
+   val rawWidth=width.dp.roundToPx();val rawHeight=height.dp.roundToPx()
+   val item=children.single().measure(androidx.compose.ui.unit.Constraints.fixed(rawWidth,rawHeight))
+   val scale=minOf(constraints.maxWidth.toFloat()/rawWidth,constraints.maxHeight.toFloat()/rawHeight,1f)
+   layout(constraints.maxWidth,constraints.maxHeight){item.placeWithLayer(0,0){scaleX=scale;scaleY=scale;transformOrigin=androidx.compose.ui.graphics.TransformOrigin(0f,0f)}}
   }
- }
- selected?.let{node->AlertDialog(onDismissRequest={selected=null},title={Text(node.name)},text={Column{listOf("Kind" to node.kind,"Namespace" to node.namespace,"Health" to node.health,"Sync" to node.sync).forEach{(label,value)->if(value.isNotBlank())Text("$label: $value",modifier=Modifier.padding(vertical=4.dp))}}},confirmButton={TextButton(onClick={selected=null}){Text("Close")}})}
+ }else Box(Modifier.fillMaxWidth().height(if(wide)210.dp else 330.dp).clip(RoundedCornerShape(16.dp)).background(DeskColors.surface).horizontalScroll(rememberScrollState()).verticalScroll(rememberScrollState())){graph()}
+ selected?.let{node->DeskModal(node.name,{selected=null}){
+  StatusPill(node.health.ifBlank{node.sync}.ifBlank{"Status not reported"},if(node.health=="Healthy")TreeGreen else TreeMuted)
+  Text(listOf(node.kind,node.namespace).filter{it.isNotBlank()}.joinToString(" · "),color=TreeMuted,fontSize=12.sp)
+  Row(horizontalArrangement=Arrangement.spacedBy(8.dp)){if(node.kind=="Pod")DeskAction("Inspect container & logs",true){selected=null;open("pod:${node.namespace}/${node.name}@")};DeskAction("Close"){selected=null}}
+ }}
 }

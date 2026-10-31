@@ -10,6 +10,8 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -31,6 +33,7 @@ import androidx.compose.ui.window.DialogProperties
 import dev.olympus.desk.data.*
 
 internal val LocalShowTests=staticCompositionLocalOf{false}
+internal val LocalGridColumns=staticCompositionLocalOf{8}
 internal val LocalGridGap=staticCompositionLocalOf{10}
 
 @Composable internal fun SettingsScreen(prefs:SharedPreferences,dimMode:Boolean,dim:Float,reduced:Boolean,awake:Boolean,tests:Boolean,dock:Int,gap:Int,setDimMode:(Boolean)->Unit,setDim:(Float)->Unit,setReduced:(Boolean)->Unit,setAwake:(Boolean)->Unit,setTests:(Boolean)->Unit,setDock:(Int)->Unit,setGap:(Int)->Unit,monitors:()->Unit,home:(String)->Unit,close:()->Unit,focus:Boolean,setFocus:(Boolean)->Unit){
@@ -38,7 +41,12 @@ internal val LocalGridGap=staticCompositionLocalOf{10}
  var resetPending by remember{mutableStateOf(false)}
  var cacheCleared by remember{mutableStateOf(false)}
  val context=LocalContext.current
+ var watch by remember{mutableStateOf(prefs.getBoolean("backgroundAlerts",false))}
+ var notificationError by remember{mutableStateOf("")}
+ fun watchEnabled(enabled:Boolean){watch=enabled;prefs.edit().putBoolean("backgroundAlerts",enabled).apply();if(enabled)context.startForegroundService(android.content.Intent(context,AlertWatchService::class.java))else context.stopService(android.content.Intent(context,AlertWatchService::class.java))}
+ val permission=androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.RequestPermission()){allowed->if(allowed)watchEnabled(true)else notificationError="Notification permission is required."}
  val pair=remember{Pairing.read(context)}
+ LaunchedEffect(section){if(section=="Events")pair?.let{LiveRepository.loadDeliveries(it)}}
  var url by remember{mutableStateOf(pair?.first?:"")};var token by remember{mutableStateOf("")};var error by remember{mutableStateOf("")}
  fun bool(key:String,value:Boolean,change:(Boolean)->Unit){prefs.edit().putBoolean(key,value).apply();change(value)}
  Dialog(onDismissRequest=close,properties=DialogProperties(usePlatformDefaultWidth=false,decorFitsSystemWindows=false)){
@@ -69,8 +77,8 @@ internal val LocalGridGap=staticCompositionLocalOf{10}
           SettingsHeading("Navigation")
           SettingsGroup{
            SettingSwitch("Focus mode",focus){bool("focusMode",it,setFocus)}
-           Text("Hide header when idle · touch to reveal",color=DeskColors.muted,fontSize=11.sp,modifier=Modifier.padding(horizontal=12.dp,vertical=8.dp))
-           SettingsDivider();SettingsRange("Dock hide delay","${dock}s",dock.toFloat(),2f..15f,12){val n=it.toInt();prefs.edit().putInt("dockSeconds",n).apply();setDock(n)}
+           Text("Hide Home header when idle · touch to reveal",color=DeskColors.muted,fontSize=11.sp,modifier=Modifier.padding(horizontal=12.dp,vertical=8.dp))
+           SettingsDivider();SettingsRange("Home dock hide delay","${dock}s",dock.toFloat(),2f..15f,12){val n=it.toInt();prefs.edit().putInt("dockSeconds",n).apply();setDock(n)}
           }
          }}
          if(wideWindow())Row(horizontalArrangement=Arrangement.spacedBy(14.dp)){Box(Modifier.weight(1f)){screen()};Box(Modifier.weight(1f)){navigation()}}else{screen();navigation()}
@@ -98,25 +106,37 @@ internal val LocalGridGap=staticCompositionLocalOf{10}
          }
         }
         "Events"->{
+         SettingsHeading("Live alerts")
+         SettingsGroup{
+          SettingSwitch("Background live alerts",watch){enabled->if(enabled&&android.os.Build.VERSION.SDK_INT>=33&&context.checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS)!=android.content.pm.PackageManager.PERMISSION_GRANTED)permission.launch(android.Manifest.permission.POST_NOTIFICATIONS)else watchEnabled(enabled)}
+          Text("Keeps a visible connection notification. Battery restrictions or lost Wi-Fi can interrupt delivery; this is a local live connection, not cloud push.",color=DeskColors.muted,fontSize=11.sp,modifier=Modifier.padding(12.dp))
+          var apps by remember{mutableStateOf(prefs.getBoolean("appNotifications",true))};var recoveries by remember{mutableStateOf(prefs.getBoolean("recoveryNotifications",false))};var quiet by remember{mutableStateOf(prefs.getBoolean("quietHours",false))}
+          SettingsDivider();SettingSwitch("App notifications",apps){apps=it;prefs.edit().putBoolean("appNotifications",it).apply()}
+          SettingsDivider();SettingSwitch("Recovery notifications",recoveries){recoveries=it;prefs.edit().putBoolean("recoveryNotifications",it).apply()}
+          SettingsDivider();SettingSwitch("Quiet hours",quiet){quiet=it;prefs.edit().putBoolean("quietHours",it).apply()}
+          if(quiet){var start by remember{mutableIntStateOf(prefs.getInt("quietStart",22))};var end by remember{mutableIntStateOf(prefs.getInt("quietEnd",7))};SettingsRange("From","%02d:00".format(start),start.toFloat(),0f..23f,22){start=it.toInt();prefs.edit().putInt("quietStart",start).apply()};SettingsRange("Until","%02d:00".format(end),end.toFloat(),0f..23f,22){end=it.toInt();prefs.edit().putInt("quietEnd",end).apply()}}
+
+         }
+         DeskDisclosure("Notification sources"){
+          val available=((LiveRepository.active+LiveRepository.events).map{it.source}+LiveRepository.deliveries.map{it.name}).filter{it!="Test"}.distinct().sorted()
+          var selectedSources by remember{mutableStateOf(prefs.getStringSet("notificationSources",null)?.toSet())}
+          SettingsAction("All sources"){selectedSources=null;prefs.edit().remove("notificationSources").apply()}
+          available.forEach{source->SettingSwitch(source,selectedSources==null||source in selectedSources.orEmpty()){enabled->val current=selectedSources?:available.toSet();selectedSources=if(enabled)current+source else current-source;prefs.edit().putStringSet("notificationSources",selectedSources).apply()}}
+         }
+         if(notificationError.isNotBlank())Text(notificationError,color=DeskColors.apricot,fontSize=12.sp)
          SettingsHeading("Notifications")
          SettingsGroup{SettingSwitch("Show test notifications",tests){bool("showTests",it,setTests)};SettingsDivider();SettingsAction("Monitors"){monitors()}}
          SettingsHeading("Recent webhook activity")
-         val received=LiveRepository.events.filter{it.source !in listOf("Kubernetes","Prometheus","Argo CD","Test")&&(tests||!(it.kind=="Test"||it.title=="Test"))}.groupBy{it.source}
+         val received=LiveRepository.deliveries.filter{it.name !in listOf("Kubernetes","Prometheus","Argo CD","Test")}
          SettingsGroup{
-          if(received.isEmpty())Text("No recent deliveries",color=DeskColors.muted,fontSize=12.sp,modifier=Modifier.padding(12.dp))
-          received.entries.forEachIndexed{i,(source,events)->
-           if(i>0)SettingsDivider()
-           Row(Modifier.fillMaxWidth().padding(12.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(12.dp)){
-            Text(source,fontSize=12.sp,maxLines=1,overflow=TextOverflow.Ellipsis,modifier=Modifier.weight(1f))
-            Text(localTime(events.maxOf{it.received.ifBlank{it.time}}),fontSize=11.sp,color=DeskColors.muted)
-           }
-          }
+          if(received.isEmpty())Text(if(LiveRepository.deliveryError)"Delivery history unavailable"else"No deliveries recorded",color=DeskColors.muted,fontSize=12.sp,modifier=Modifier.padding(12.dp))
+          received.forEachIndexed{i,delivery->if(i>0)SettingsDivider();SettingsValue("${delivery.name} · ${delivery.count}",localTime(delivery.lastReceived))}
          }
          SettingsHeading("Storage & privacy")
          SettingsGroup{
           SettingsValue("History retention","30 days · 2,000 records")
           SettingsDivider();SettingsValue("Backend volume","1 GiB")
-          Text("Active incidents remain until recovery is confirmed. Background system notifications are not enabled.",fontSize=12.sp,lineHeight=18.sp,color=DeskColors.muted,modifier=Modifier.padding(12.dp))
+          Text("Active incidents remain until recovery is confirmed. Live alerts can be enabled above.",fontSize=12.sp,lineHeight=18.sp,color=DeskColors.muted,modifier=Modifier.padding(12.dp))
           SettingsDivider();SettingsAction("Clear device cache"){
            java.io.File(context.filesDir,"last-frame.json").delete();context.cacheDir.listFiles()?.filter{it.name.startsWith("asset-")}?.forEach{it.delete()};cacheCleared=true
           }
@@ -147,8 +167,8 @@ internal val LocalGridGap=staticCompositionLocalOf{10}
 @Composable private fun SettingsGroup(content:@Composable ColumnScope.()->Unit){Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(DeskColors.surface),content=content)}
 @Composable private fun SettingsDivider(){HorizontalDivider(color=DeskColors.muted.copy(alpha=.1f),modifier=Modifier.padding(horizontal=12.dp))}
 @Composable private fun SettingSwitch(label:String,value:Boolean,change:(Boolean)->Unit){
- Row(Modifier.fillMaxWidth().heightIn(min=52.dp).toggleable(value=value,role=Role.Switch,onValueChange=change).padding(horizontal=12.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(12.dp)){
-  Text(label,Modifier.weight(1f),color=DeskColors.text,fontSize=13.sp);Switch(checked=value,onCheckedChange=null)
+ Row(Modifier.fillMaxWidth().heightIn(min=48.dp).toggleable(value=value,role=Role.Switch,onValueChange=change).padding(horizontal=12.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(12.dp)){
+  Text(label,Modifier.weight(1f),color=DeskColors.text,fontSize=13.sp);Box(Modifier.size(36.dp,22.dp).clip(RoundedCornerShape(12.dp)).background(if(value)DeskColors.cobalt else DeskColors.raised).padding(3.dp),contentAlignment=if(value)Alignment.CenterEnd else Alignment.CenterStart){Box(Modifier.size(16.dp).background(DeskColors.text,RoundedCornerShape(8.dp)))}
  }
 }
 @Composable private fun SettingsAction(label:String,warning:Boolean=false,click:()->Unit){
@@ -156,9 +176,14 @@ internal val LocalGridGap=staticCompositionLocalOf{10}
 }
 @Composable private fun SettingsValue(label:String,value:String){Row(Modifier.fillMaxWidth().padding(12.dp),horizontalArrangement=Arrangement.spacedBy(12.dp)){Text(label,color=DeskColors.muted,fontSize=12.sp,modifier=Modifier.weight(1f));Text(value,color=DeskColors.text,fontSize=12.sp,modifier=Modifier.weight(1f),textAlign=TextAlign.End)}}
 @Composable private fun SettingsRange(label:String,value:String,current:Float,range:ClosedFloatingPointRange<Float>,steps:Int=0,change:(Float)->Unit){
- Column(Modifier.fillMaxWidth().padding(horizontal=12.dp,vertical=10.dp)){
+ Column(Modifier.fillMaxWidth().padding(horizontal=12.dp,vertical=6.dp)){
   Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically){Text(label,color=DeskColors.text,fontSize=13.sp,modifier=Modifier.weight(1f));Text(value,color=DeskColors.blue,fontSize=12.sp,fontWeight=FontWeight.SemiBold)}
-  Slider(value=current,onValueChange=change,valueRange=range,steps=steps,modifier=Modifier.fillMaxWidth())
+  Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically){
+   IconButton(onClick={change((current-(range.endInclusive-range.start)/(if(steps>0)steps+1 else 20)).coerceIn(range))},modifier=Modifier.size(40.dp).semantics{contentDescription="Decrease $label"}){Text("−",color=DeskColors.blue,fontSize=20.sp)}
+   LinearProgressIndicator(progress={((current-range.start)/(range.endInclusive-range.start)).coerceIn(0f,1f)},modifier=Modifier.weight(1f).height(4.dp),color=DeskColors.cobalt,trackColor=DeskColors.raised,drawStopIndicator={})
+   IconButton(onClick={change((current+(range.endInclusive-range.start)/(if(steps>0)steps+1 else 20)).coerceIn(range))},modifier=Modifier.size(40.dp).semantics{contentDescription="Increase $label"}){Text("+",color=DeskColors.blue,fontSize=20.sp)}
+  }
+
  }
 }
 

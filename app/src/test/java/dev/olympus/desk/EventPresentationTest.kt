@@ -9,4 +9,5 @@ class EventPresentationTest {
  @Test fun activeNodeIssueDoesNotDuplicateLegacySummary(){val old=AttentionItem("Node not ready","node:apollo","Warning");val active=alert("warning",id="node:apollo");val items=mergeAttention(listOf(old),listOf(active));assertEquals(1,items.size);assertEquals("event:node:apollo",items.first().target)}
  @Test fun recoveryDoesNotKeepPresentTenseWarningCopy(){val event=LabEvent("Argo CD","Sonarr requires attention","", "Warning",state="Resolved");assertEquals("Sonarr recovered",incidentTitle(event));assertEquals("Sonarr requires attention",event.title)}
  @Test fun activeAlertRetainsMeaning(){val event=LabEvent("Prometheus","CPUThrottlingHigh","","Warning",state="Firing");assertEquals("CPU throttling",incidentTitle(event));assertTrue(needsAttention(event))}
+ @org.junit.Test fun recoveredGitOpsDoesNotReadLikeACurrentFailure(){org.junit.Assert.assertEquals("olympus recovered",incidentTitle(dev.olympus.desk.data.LabEvent("Argo CD","olympus · Progressing / Synced","","info",state="Resolved")))}
 }

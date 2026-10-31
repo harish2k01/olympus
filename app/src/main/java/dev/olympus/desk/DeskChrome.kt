@@ -27,12 +27,12 @@ import kotlin.math.*
 internal val LocalReducedMotion=staticCompositionLocalOf{false}
 
 @Composable internal fun FloatingDock(selected:String,select:(String)->Unit){
- Row(Modifier.widthIn(max=410.dp).fillMaxWidth(.88f).shadow(18.dp,RoundedCornerShape(25.dp)).clip(RoundedCornerShape(25.dp)).background(Color(0xF52A3040)).border(1.dp,Color.White.copy(alpha=.12f),RoundedCornerShape(25.dp)).padding(5.dp),horizontalArrangement=Arrangement.spacedBy(4.dp)){
+ Row(Modifier.widthIn(max=340.dp).fillMaxWidth(.88f).shadow(18.dp,RoundedCornerShape(22.dp)).clip(RoundedCornerShape(22.dp)).background(Color(0xF52A3040)).border(1.dp,Color.White.copy(alpha=.12f),RoundedCornerShape(22.dp)).padding(5.dp),horizontalArrangement=Arrangement.spacedBy(4.dp)){
   listOf("Home" to "Home","Cluster" to "Nodes","Services" to "Apps","Inbox" to "Events").forEach{(name,icon)->
    
-   Column(Modifier.weight(1f).clip(RoundedCornerShape(20.dp)).background(if(selected==name)Color(0xFF465DD1)else Color.Transparent).clickable{select(name)}.heightIn(min=48.dp).heightIn(min=48.dp).padding(vertical=7.dp),horizontalAlignment=Alignment.CenterHorizontally){
-    LabGlyph(icon,if(selected==name)Color.White else Color(0xFFBFC4D1),24.dp)
-    Text(name,color=if(selected==name)Color.White else Color(0xFFBFC4D1),fontSize=10.sp)
+   Column(Modifier.weight(1f).clip(RoundedCornerShape(17.dp)).background(if(selected==name)Color(0xFF465DD1)else Color.Transparent).clickable{select(name)}.heightIn(min=44.dp).padding(vertical=4.dp),horizontalAlignment=Alignment.CenterHorizontally){
+    LabGlyph(icon,if(selected==name)Color.White else Color(0xFFBFC4D1),20.dp)
+    Text(name,color=if(selected==name)Color.White else Color(0xFFBFC4D1),fontSize=9.sp)
    }
   }
  }

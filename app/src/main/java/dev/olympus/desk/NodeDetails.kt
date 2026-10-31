@@ -32,17 +32,17 @@ private fun percentage(row:JSONObject,key:String)=if(row.isNull(key))""else" (${
 private fun JSONArray?.objects()=(0 until (this?.length()?:0)).map{this!!.getJSONObject(it)}
 
 @Composable internal fun DetailTable(title:String,headers:List<String>,widths:List<Int>,rows:List<List<String>>){
- Text(title,color=DetailPaper,fontSize=15.sp,fontWeight=FontWeight.SemiBold,modifier=Modifier.padding(top=14.dp,bottom=8.dp))
+ Text(title,color=DetailPaper,fontSize=15.sp,fontWeight=FontWeight.SemiBold,modifier=Modifier.padding(top=8.dp,bottom=6.dp))
  if(rows.isEmpty()){Text("None",color=DetailMuted,fontSize=12.sp);return}
  BoxWithConstraints(Modifier.fillMaxWidth()){
  val widthFactor=((maxWidth.value-16)/widths.sum()).coerceAtLeast(1f)
  Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).border(1.dp,Color(0xFF3A4150),RoundedCornerShape(16.dp)).horizontalScroll(rememberScrollState())){
   Row(Modifier.background(Color(0xFF30384A)).padding(horizontal=8.dp)){
-   headers.forEachIndexed{i,label->Text(label,color=DetailMuted,fontSize=11.sp,fontWeight=FontWeight.SemiBold,modifier=Modifier.width((widths[i]*widthFactor).dp).padding(horizontal=10.dp,vertical=10.dp))}
+   headers.forEachIndexed{i,label->Text(label,color=DetailMuted,fontSize=11.sp,fontWeight=FontWeight.SemiBold,modifier=Modifier.width((widths[i]*widthFactor).dp).padding(horizontal=8.dp,vertical=6.dp))}
   }
   rows.forEachIndexed{index,row->
    Row(Modifier.background(if(index%2==0)DetailCard else Color(0xFF202630)).padding(horizontal=8.dp)){
-    row.forEachIndexed{i,value->Text(value.ifBlank{"—"},color=when{title=="Conditions"&&i==1->if((row[0]=="Ready"&&value=="True")||(row[0]!="Ready"&&value=="False"))Color(0xFFB4DFBE)else Color(0xFFEDB48F);value in listOf("Ready","Healthy")->Color(0xFFB4DFBE);value in listOf("Warning","Not ready","Critical")->Color(0xFFEDB48F);else->DetailPaper},fontSize=12.sp,lineHeight=18.sp,modifier=Modifier.width((widths[i]*widthFactor).dp).padding(horizontal=10.dp,vertical=10.dp))}
+    row.forEachIndexed{i,value->Text(value.ifBlank{"—"},color=when{title=="Conditions"&&i==1->if((row[0]=="Ready"&&value=="True")||(row[0]!="Ready"&&value=="False"))Color(0xFFB4DFBE)else Color(0xFFEDB48F);value in listOf("Ready","Healthy")->Color(0xFFB4DFBE);value in listOf("Warning","Not ready","Critical")->Color(0xFFEDB48F);else->DetailPaper},fontSize=11.sp,lineHeight=15.sp,modifier=Modifier.width((widths[i]*widthFactor).dp).padding(horizontal=8.dp,vertical=6.dp))}
    }
    HorizontalDivider(color=Color(0xFF353C49),thickness=.5.dp)
   }
@@ -50,7 +50,7 @@ private fun JSONArray?.objects()=(0 until (this?.length()?:0)).map{this!!.getJSO
  }
 }
 
-@Composable internal fun NodeDetailScreen(name:String){
+@Composable internal fun NodeDetailScreen(name:String,open:(String)->Unit={}){
  val context=LocalContext.current
  val scope=rememberCoroutineScope()
  LaunchedEffect(name){Pairing.read(context)?.let{LiveRepository.loadNode(it,name)}}
@@ -72,10 +72,14 @@ private fun JSONArray?.objects()=(0 until (this?.length()?:0)).map{this!!.getJSO
  when(section){
   "Overview"->{
    val conditions=status.optJSONArray("Conditions").objects()
-   val pressure=conditions.filter{it.optString("type").endsWith("Pressure")&&it.optString("status")=="True"}
-   Row(Modifier.fillMaxWidth().padding(vertical=8.dp),horizontalArrangement=Arrangement.SpaceBetween){Text(if(metric?.ready==true)"Node ready"else"Readiness unconfirmed",color=if(metric?.ready==true)DeskColors.green else DeskColors.apricot,fontSize=14.sp);Text(if(pressure.isEmpty())"No pressure conditions"else"${pressure.size} pressure conditions",color=if(pressure.isEmpty())DetailMuted else DeskColors.apricot,fontSize=12.sp)}
-   Text("Full tables scroll horizontally",color=DetailMuted,fontSize=10.sp)
+   Row(Modifier.fillMaxWidth().padding(vertical=4.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.SpaceBetween){
+    StatusPill(if(metric?.ready==true)"Ready"else"Readiness unconfirmed",if(metric?.ready==true)DeskColors.green else DeskColors.apricot)
+    Text("${conditions.size} conditions",color=DetailMuted,fontSize=11.sp)
+   }
+   DetailTable("Conditions",listOf("Type","Status","Reason"),listOf(170,75,230),conditions.map{c->listOf(c.optString("type"),c.optString("status"),c.optString("reason"))})
+   DeskDisclosure("Condition timestamps & messages"){
    DetailTable("Conditions",listOf("Type","Status","Last heartbeat","Last transition","Reason","Message"),listOf(170,75,165,165,230,330),status.optJSONArray("Conditions").objects().map{c->listOf(c.optString("type"),c.optString("status"),localTime(c.optString("lastHeartbeatTime")),localTime(c.optString("lastTransitionTime")),c.optString("reason"),c.optString("message"))})
+   }
    val capacity=status.optJSONObject("Capacity")?:JSONObject();val allocatable=status.optJSONObject("Allocatable")?:JSONObject()
    DetailTable("Capacity & allocatable",listOf("Resource","Capacity","Allocatable"),listOf(185,210,210),capacity.keys().asSequence().sorted().map{key->listOf(key,capacity.optString(key),allocatable.optString(key))}.toList())
    DetailTable("Allocated resources",listOf("Resource","Requests","Limits"),listOf(185,210,210),details.optJSONArray("allocations").objects().sortedBy{it.optString("resource")}.filter{it.optString("resource")!="pods"}.map{row->val key=row.optString("resource");listOf(key,amount(row.optDouble("requests"),key)+percentage(row,"requestPercent"),amount(row.optDouble("limits"),key)+percentage(row,"limitPercent"))})
@@ -85,11 +89,20 @@ private fun JSONArray?.objects()=(0 until (this?.length()?:0)).map{this!!.getJSO
    DeskDisclosure("Labels, taints & identifiers"){val labels=node.getJSONObject("Metadata").optJSONObject("Labels")?:JSONObject();DetailTable("Labels",listOf("Key","Value"),listOf(370,350),labels.keys().asSequence().sorted().map{listOf(it,labels.optString(it))}.toList());DetailTable("Taints",listOf("Key","Value","Effect"),listOf(290,200,200),spec.optJSONArray("Taints").objects().map{listOf(it.optString("key"),it.optString("value"),it.optString("effect"))});DetailTable("Identifiers",listOf("Field","Value"),listOf(180,450),listOf("machineID","systemUUID","bootID").map{listOf(it,system.optString(it))})}
   }
   "Workloads"->{
+   details.optJSONArray("workloads").objects().sortedBy{it.optString("name")}.forEach{pod->
+    Row(Modifier.fillMaxWidth().clickable{open("pod:${pod.optString("namespace")}/${pod.optString("name")}@$name")}.padding(vertical=9.dp),horizontalArrangement=Arrangement.SpaceBetween){
+     Column(Modifier.weight(1f)){Text(pod.optString("name"),color=DetailPaper,fontSize=13.sp);Text(pod.optString("namespace"),color=DetailMuted,fontSize=11.sp)}
+     Text("${pod.optInt("ready")}/${pod.optInt("containers")} ready · ${pod.optInt("restarts")} restarts",color=DetailMuted,fontSize=11.sp)
+    };HorizontalDivider(color=DeskColors.raised)
+   }
+   DeskDisclosure("Requests, limits & allocations"){
+
    DetailTable("Non-terminated pods",listOf("Namespace","Pod","Ready","CPU requests","CPU limits","Memory requests","Memory limits","Restarts","Age"),listOf(125,330,70,125,125,145,145,85,90),details.optJSONArray("workloads").objects().sortedWith(compareBy({it.optString("namespace")},{it.optString("name")})).map{p->val req=p.optJSONObject("requests")?:JSONObject();val lim=p.optJSONObject("limits")?:JSONObject();val age=try{val hours=java.time.Duration.between(Instant.parse(p.getString("createdAt")),Instant.now()).toHours();if(hours>=24)"${hours/24}d ${hours%24}h"else"${hours}h"}catch(_:Exception){"—"};listOf(p.optString("namespace"),p.optString("name"),"${p.optInt("ready")}/${p.optInt("containers")}",amount(req.optDouble("cpu",0.0),"cpu"),amount(lim.optDouble("cpu",0.0),"cpu"),amount(req.optDouble("memory",0.0),"memory"),amount(lim.optDouble("memory",0.0),"memory"),p.optInt("restarts").toString(),age)})
   }
+   }
   "Metrics"->{
    val values=details.optJSONArray("cpuHistory")?.optJSONObject(0)?.optJSONArray("Values")
-   Text("CPU · 15 minutes",color=DetailMuted,fontSize=12.sp,modifier=Modifier.padding(top=18.dp,bottom=10.dp));Spark(values?.objectsFromPairs()?:emptyList(),Color(0xFF879BFF))
+   Text("CPU · 15 minutes",color=DetailMuted,fontSize=12.sp,modifier=Modifier.padding(top=18.dp,bottom=10.dp));Spark(values?.objectsFromPairs()?:emptyList(),Color(0xFF879BFF),true)
    val stats=details.optJSONObject("stats")?:JSONObject();fun value(key:String)=if(stats.isNull(key))"Unavailable"else String.format(java.util.Locale.US,"%.2f",stats.optDouble(key))
    DetailTable("Storage & network",listOf("Metric","Value"),listOf(260,240),listOf(listOf("Filesystem used",value("diskUsedPercent")+" %"),listOf("Network receive",value("receiveMiBs")+" MiB/s"),listOf("Network transmit",value("transmitMiBs")+" MiB/s")))
   }

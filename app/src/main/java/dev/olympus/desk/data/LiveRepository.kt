@@ -38,8 +38,15 @@ object Pairing {
 data class ServiceState(val name:String,val namespace:String,val health:String,val sync:String,val cpu:Float?=null,val memory:Float?=null,val pods:Int=0,val ready:Int=0,val icon:String="",val url:String="",val resources:List<String> = emptyList())
 data class MonitorState(val id:String,val name:String,val type:String,val status:String,val responseMs:Float?)
 data class ServiceWidgetState(val name:String,val kind:String,val fields:Map<String,Float?>,val time:String,val error:String)
+data class SourceDelivery(val name:String,val count:Int,val lastReceived:String)
+
 data class AttentionItem(val title:String,val target:String,val severity:String)
 object LiveRepository {
+    var deliveries by mutableStateOf(emptyList<SourceDelivery>());private set
+    var deliveryError by mutableStateOf(false);private set
+    private var deliveryTime=0L
+    suspend fun loadDeliveries(pair:Pair<String,String>,force:Boolean=false){if(!force&&System.currentTimeMillis()-deliveryTime<30000)return;try{val page=withContext(Dispatchers.IO){JSONObject(request(pair,"/v1/events/sources"))};val list=page.getJSONArray("sources");deliveries=(0 until list.length()).map{val row=list.getJSONObject(it);SourceDelivery(row.getString("name"),row.getInt("count"),row.optString("lastReceived"))};deliveryError=false;deliveryTime=System.currentTimeMillis()}catch(e:CancellationException){throw e}catch(_:Exception){deliveryError=true}}
+
     var active by mutableStateOf(emptyList<LabEvent>());private set
     var integrations by mutableStateOf(emptyList<ServiceWidgetState>());private set
     var signals by mutableStateOf(mapOf<String,Boolean>());private set

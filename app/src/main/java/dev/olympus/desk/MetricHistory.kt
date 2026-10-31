@@ -50,12 +50,12 @@ internal fun historyEdges(points:List<MetricSample>,step:Long):List<Pair<MetricS
    frame=HistoricalFrame(json.getLong("start"),json.getLong("end"),json.getLong("step"),series)
   }catch(e:CancellationException){throw e}catch(_:Exception){failed=true}finally{loading=false}
  }
- Column(Modifier.fillMaxWidth().padding(vertical=8.dp).clip(RoundedCornerShape(18.dp)).background(DeskColors.surface).padding(14.dp),verticalArrangement=Arrangement.spacedBy(8.dp)){
+ Column(Modifier.fillMaxWidth().padding(vertical=4.dp).clip(RoundedCornerShape(18.dp)).background(DeskColors.surface).padding(10.dp),verticalArrangement=Arrangement.spacedBy(5.dp)){
   DeskSegments(listOf("1h","6h","24h"),range,{range=it}){refresh++}
   when{
    loading->Text("Loading history…",color=DeskColors.muted,fontSize=12.sp)
    failed->{Text("History unavailable",color=DeskColors.apricot,fontSize=13.sp);DeskAction("Retry"){refresh++}}
-   else->frame?.let{data->data.series.forEach{series->HistoricalChart(series,data)}}
+   else->frame?.let{data->if(wideWindow())Row(horizontalArrangement=Arrangement.spacedBy(16.dp)){data.series.forEach{series->Box(Modifier.weight(1f)){HistoricalChart(series,data)}}}else data.series.forEach{series->HistoricalChart(series,data)}}
   }
  }
 }
@@ -79,14 +79,14 @@ internal fun historyEdges(points:List<MetricSample>,step:Long):List<Pair<MetricS
   val top=if(series.unit=="%")100f else (valid.maxOf{it.value!!}*1.1f).coerceAtLeast(.01f)
   if(!state)Text("0–${reading(top)}",color=DeskColors.muted,fontSize=10.sp)
   val span=(frame.end-frame.start).coerceAtLeast(1).toFloat()
-  Canvas(Modifier.fillMaxWidth().height(if(state)22.dp else 100.dp).semantics{contentDescription="${series.name}, ${reading(selected?.value)}, ${selected?.let{time(it.time)}.orEmpty()}"}.pointerInput(series,frame){detectTapGestures{point->val target=frame.start+(point.x/size.width*span).toLong();selection=series.points.minByOrNull{abs(it.time-target)}}}){
+  Canvas(Modifier.fillMaxWidth().height(if(state)22.dp else if(wideWindow())72.dp else 110.dp).semantics{contentDescription="${series.name}, ${reading(selected?.value)}, ${selected?.let{time(it.time)}.orEmpty()}"}.pointerInput(series,frame){detectTapGestures{point->val target=frame.start+(point.x/size.width*span).toLong();selection=series.points.minByOrNull{abs(it.time-target)}}}){
    fun x(at:Long)=(at-frame.start)/span*size.width
    fun y(value:Float)=size.height*(1-value.coerceIn(0f,top)/top)
    if(state)series.points.forEach{point->
     val color=when(point.value?.toInt()){0->Color(0xFFEF9DA5);1->DeskColors.green;2->DeskColors.apricot;3->DeskColors.lilac;else->DeskColors.raised}
     drawRect(color,Offset(x(point.time),0f),androidx.compose.ui.geometry.Size((x((point.time+frame.step).coerceAtMost(frame.end))-x(point.time)).coerceAtLeast(1f),size.height))
    }else{
-    drawLine(DeskColors.raised,Offset(0f,size.height),Offset(size.width,size.height),1.dp.toPx())
+    listOf(0f,.5f,1f).forEach{level->drawLine(DeskColors.raised,Offset(0f,size.height*level),Offset(size.width,size.height*level),.5.dp.toPx())}
     historyEdges(series.points,frame.step).forEach{(a,b)->drawLine(DeskColors.blue,Offset(x(a.time),y(a.value!!)),Offset(x(b.time),y(b.value!!)),1.6.dp.toPx())}
     selected?.value?.let{drawCircle(DeskColors.lilac,3.dp.toPx(),Offset(x(selected.time),y(it)))}
    }

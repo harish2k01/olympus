@@ -22,6 +22,7 @@ import kotlin.math.*
   fun line(x:Float,y:Float,a:Float,b:Float){drawLine(color,Offset(x*u,y*u),Offset(a*u,b*u),stroke,StrokeCap.Round)}
   fun path(vararg points:Pair<Float,Float>,close:Boolean=false){val p=Path();points.forEachIndexed{i,(x,y)->if(i==0)p.moveTo(x*u,y*u)else p.lineTo(x*u,y*u)};if(close)p.close();drawPath(p,color,style=Stroke(stroke,cap=StrokeCap.Round))}
   when(kind){
+   "Refresh"->{drawArc(color,35f,285f,false,Offset(4*u,4*u),androidx.compose.ui.geometry.Size(16*u,16*u),style=Stroke(stroke,cap=StrokeCap.Round));path(19f to 3f,20f to 9f,14f to 8f)}
    "Clock"->{drawCircle(color,8*u,Offset(12*u,12*u),style=Stroke(stroke));path(12f to 7f,12f to 12f,16f to 14f)}
    "CPU"->{path(6f to 6f,18f to 6f,18f to 18f,6f to 18f,close=true);path(9f to 9f,15f to 9f,15f to 15f,9f to 15f,close=true);listOf(8f,12f,16f).forEach{p->line(p,3f,p,6f);line(p,18f,p,21f);line(3f,p,6f,p);line(18f,p,21f,p)}}
    "Memory"->{path(3f to 7f,21f to 7f,21f to 17f,3f to 17f,close=true);path(6f to 10f,10f to 10f,10f to 14f,6f to 14f,close=true);path(14f to 10f,18f to 10f,18f to 14f,14f to 14f,close=true);listOf(5f,9f,13f,17f).forEach{p->line(p,17f,p,20f)}}
