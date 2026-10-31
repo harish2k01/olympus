@@ -398,7 +398,9 @@ func (s *server) api(w http.ResponseWriter, r *http.Request) {
 		write(w, 200, out)
 	case "/v1/events":
 		write(w, 200, s.feed(ctx))
-	case "/v1/events/history":
+	case "/v1/events/sources":
+  s.mu.Lock(); sources:=retainedSources(s.events);s.mu.Unlock();write(w,200,map[string]any{"sources":sources})
+ case "/v1/events/history":
 		offset, _ := strconv.Atoi(r.URL.Query().Get("offset"))
 		if offset < 0 {
 			offset = 0
@@ -406,6 +408,8 @@ func (s *server) api(w http.ResponseWriter, r *http.Request) {
 		s.mu.Lock()
 		rows := append([]Event{}, s.events...)
 		s.mu.Unlock()
+  source:=r.URL.Query().Get("source")
+  if source!=""&&source!="All" {if len(source)>120 {write(w,400,map[string]string{"error":"Invalid source"});return};filtered:=[]Event{};for _,event:=range rows {if event.Source==source {filtered=append(filtered,event)}};rows=filtered}
 		sort.SliceStable(rows, func(i, j int) bool { return eventOrder(rows[i]) > eventOrder(rows[j]) })
 		if offset > len(rows) {
 			offset = len(rows)
