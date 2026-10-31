@@ -102,6 +102,10 @@ private fun groupingKey(e:LabEvent)=listOf(e.source,e.title,e.detail,e.kind)
  }}
  if(wideWindow())Row(horizontalArrangement=Arrangement.spacedBy(14.dp)){Box(Modifier.weight(1.35f)){measurements()};Box(Modifier.weight(1f)){timeline()}}
  else Column(verticalArrangement=Arrangement.spacedBy(12.dp)){measurements();timeline()}
+ if(event.title.contains("throttl",true)&&event.namespace.isNotBlank()&&event.pod.isNotBlank()&&event.container.isNotBlank()){
+  fun encoded(value:String)=java.net.URLEncoder.encode(value,"UTF-8")
+  MetricHistoryPanel("kind=throttling&namespace=${encoded(event.namespace)}&pod=${encoded(event.pod)}&container=${encoded(event.container)}")
+ }
  DeskDisclosure("Technical details"){
   DetailTable("Reference",listOf("Field","Value"),listOf(180,560),listOf(listOf("Event ID",event.id),listOf("Resource",event.resource),listOf("Original title",event.title),listOf("Original message",cleanEventMessage(event.detail)))+event.labels.map{listOf(it.key,it.value)})
  }

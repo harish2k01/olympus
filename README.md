@@ -29,7 +29,7 @@ Requires Android Studio, its compatible JDK, Android SDK Platform 37, and Build 
 
 `deploy/kubernetes.yaml` defines the service and read-only cluster permissions. Adapt the ingress hostname and gateway to your environment. Create the `olympus-auth` Secret in the `olympus` namespace with independently generated `API_TOKEN` and `HOOK_TOKEN` values of at least 32 characters before deploying. Never commit this Secret. `gitops/application.yaml` provides an Argo CD Application example.
 
-The API exposes authenticated `GET /v1/snapshot`, `GET /v1/events`, `GET /v1/events/history?offset=0`, `GET /v1/stream`, `GET /v1/nodes/{name}`, and `GET /v1/apps/{name}`. Webhooks use `POST /hooks/{source}` with the hook token as a Bearer token or Basic authentication password. Publish the mobile API through HTTPS and keep webhook routes within a trusted network. A proxy must allow long-lived streaming responses without buffering.
+The API exposes authenticated `GET /v1/snapshot`, `GET /v1/events`, `GET /v1/events/history?offset=0`, `GET /v1/stream`, `GET /v1/nodes/{name}`, and `GET /v1/apps/{name}`, and `GET /v1/metrics/history`. Webhooks use `POST /hooks/{source}` with the hook token as a Bearer token or Basic authentication password. Publish the mobile API through HTTPS and keep webhook routes within a trusted network. A proxy must allow long-lived streaming responses without buffering.
 
 The development build accepts `backendUrl` and `pairToken` intent extras for initial pairing. The token is encrypted using Android Keystore. This development pairing mechanism is not a finished onboarding interface. Kubernetes credentials remain inside the backend pod.
 
@@ -56,3 +56,9 @@ The optional `olympus-integrations` Secret supplies `INTEGRATIONS_JSON`, an arra
 The Recent activity widget shows the latest received event and its event/recovery timestamp. Full retained activity can be inspected in Inbox History. Repeated updates to one Kubernetes Event UID remain one record. History is retained for 30 days or 2,000 records, while active incidents are retained separately.
 
 Firing alerts are current Prometheus or integration conditions, not a count of delivered Robusta/Alertmanager notifications. Informational conditions are separated from actionable warnings and failures. An alert clears when its authoritative source confirms recovery, rather than after an app timer; pending and unconfirmed states remain explicit. Alert details retain namespace, pod, container, and selected reporting labels. Nodes come from an explicit alert node label or observed pod placement, never by assuming that an exporter instance is the affected node. CPU throttling details include the observed CPU limit and the fraction of scheduling periods throttled when available.
+
+### Investigation metric history
+
+Monitor details offer 1-hour, 6-hour and 24-hour response-time and availability history from Prometheus. CPU-throttling incidents with a namespace, pod and container offer throttled-period percentage and CPU usage history. Tap a chart to inspect a sample. Missing samples remain gaps; these charts do not establish an uptime SLA or an alert threshold.
+
+The authenticated history endpoint accepts only `kind=monitor&id=...` or `kind=throttling&namespace=...&pod=...&container=...`, plus `range=1h|6h|24h`. It does not accept arbitrary PromQL. Queries use a six-second upstream timeout, at most 400 samples per series, and a 30-second cache capped at 64 entries. History loads on demand rather than adding a phone polling loop.

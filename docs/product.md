@@ -13,7 +13,7 @@ Olympus is a personal Android desk console for a Kubernetes homelab. Its core wo
 
 An attention widget links to its incident. The incident shows source, state, available measurements, timestamps and affected resources. When a pod and node are identified, **Inspect workload** opens current readiness, restarts and resource allocations from the node API. **Open node** reaches detailed node evidence. Back returns to the previous investigation route.
 
-A monitor opens current availability, latency, recent session response-time samples and matching received notifications. These samples do not imply a historical uptime percentage. An integration opens selected counters, collection time, app notifications and an application-resource link when that application is available.
+A monitor opens current availability, latency, Prometheus response-time and availability history over 1, 6 or 24 hours and matching received notifications. These samples do not imply a historical uptime percentage. An integration opens selected counters, collection time, app notifications and an application-resource link when that application is available.
 
 Original incident payloads remain under Technical details. Source-provided CPU limits and throttled-period measurements are preserved. Missing values remain unavailable. The client does not fabricate thresholds, historical charts, uptime percentages or notifications.
 
@@ -35,4 +35,4 @@ These approved concept images contain illustrative data. They establish directio
 
 ## Product boundaries
 
-The current app exposes read-only inspection and relevant external links. Kubernetes write actions, Android background push delivery and motion-triggered screen wake are not implemented. Broader monitor history and incident metric time series require corresponding backend capabilities; they are not substituted with demo data. Release quality requires physical-device verification across orientation, reconnection, editing and resource investigation, in addition to automated checks.
+The current app exposes read-only inspection and relevant external links. Kubernetes write actions, Android background push delivery and motion-triggered screen wake are not implemented. Monitor history and CPU-throttling investigations use bounded Prometheus range queries. Throttling history requires the source namespace, pod and container; other incident types retain their available measurements and timeline. Missing samples break chart lines and unavailable history has a retry state. Release quality requires physical-device verification across orientation, reconnection, editing and resource investigation, in addition to automated checks.

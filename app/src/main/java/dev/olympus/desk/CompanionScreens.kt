@@ -64,9 +64,9 @@ import org.json.JSONObject
   Text(monitor.responseMs?.let{"${it.toInt()} ms response time"}?:"Response time unavailable",color=DeskColors.text,fontSize=17.sp)
   Text("${monitor.type} · Uptime Kuma",color=DeskColors.muted,fontSize=12.sp)
   Text(if(LiveRepository.state.startsWith("Live"))"Current reading"else"Last known reading · ${LiveRepository.state}",color=DeskColors.muted,fontSize=12.sp)
-  val history=LiveRepository.history["monitor:$id"].orEmpty()
-  if(history.size>1){Text("Response time · recent session samples (ms)",color=DeskColors.muted,fontSize=12.sp);Spark(history,DeskColors.lilac)}
+
  }
+ MetricHistoryPanel("kind=monitor&id="+java.net.URLEncoder.encode(id,"UTF-8"))
  val related=(LiveRepository.active+LiveRepository.events).distinctBy{it.id}.filter{it.source.contains("Kuma",true)&&(it.title.contains(monitor.name,true)||it.detail.contains(monitor.name,true))}
  CompanionPanel("Related notifications"){
   if(related.isEmpty())Text("No matching notifications received",color=DeskColors.muted,fontSize=13.sp)
