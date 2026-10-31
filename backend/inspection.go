@@ -30,7 +30,8 @@ func (s *server) workloadInspection(w http.ResponseWriter,r *http.Request,parent
  for _,c:=range append(pod.Spec.Containers,pod.Spec.InitContainers...) {if c.Name==container {found=true}}
  if !logs {write(w,200,map[string]any{"name":pod.Metadata.Name,"namespace":pod.Metadata.Namespace,"createdAt":pod.Metadata.CreationTimestamp,"node":pod.Spec.NodeName,"phase":pod.Status.Phase,"containers":pod.Spec.Containers,"initContainers":pod.Spec.InitContainers,"statuses":pod.Status.ContainerStatuses,"initStatuses":pod.Status.InitContainerStatuses});return}
  if !found {write(w,404,map[string]string{"error":"Container not present"});return}
- params:=url.Values{"container":{container},"tailLines":{"200"},"limitBytes":{"65536"},"sinceSeconds":{"3600"},"timestamps":{"true"},"previous":{q.Get("previous")}}
+ previous:=q.Get("previous");if previous=="" {previous="false"}
+ params:=url.Values{"container":{container},"tailLines":{"200"},"limitBytes":{"65536"},"sinceSeconds":{"3600"},"timestamps":{"true"},"previous":{previous}}
  req,err:=http.NewRequestWithContext(ctx,"GET",base+"/log?"+params.Encode(),nil)
  if err!=nil {write(w,502,map[string]string{"error":"Logs unavailable"});return}
  req.Header.Set("Authorization","Bearer "+s.sa)
