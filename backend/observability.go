@@ -54,7 +54,13 @@ func route(path string) string {
   return "metric_history"
  case path == "/v1/snapshot":
 		return "snapshot"
-	case path == "/v1/events":
+	case path == "/v1/events/history":
+  return "event_history"
+ case path == "/v1/events/sources":
+  return "event_sources"
+ case path == "/v1/events/item":
+  return "event_detail"
+ case path == "/v1/events":
 		return "events"
 	case strings.HasPrefix(path, "/hooks/"):
 		return "webhook"
