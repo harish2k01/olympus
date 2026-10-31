@@ -17,12 +17,12 @@ import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupProperties
 
 internal object DeskColors {
- val background=Color(0xFF121620);val surface=Color(0xFF212735);val raised=Color(0xFF2C3445)
+ val background=Color(0xFF11151E);val surface=Color(0xFF222733);val raised=Color(0xFF2C3445)
  val text=Color(0xFFF1F2F8);val muted=Color(0xFFB3BBCF);val blue=Color(0xFF8D9EFF)
- val cobalt=Color(0xFF4C63ED);val lilac=Color(0xFFC7BFED);val apricot=Color(0xFFEFBC99);val green=Color(0xFFB5DEC6)
+ val cobalt=Color(0xFF5268EF);val lilac=Color(0xFFC7BFED);val apricot=Color(0xFFEFBC99);val green=Color(0xFFB5DEC6)
 }
 @Composable internal fun DeskAction(label:String,primary:Boolean=false,enabled:Boolean=true,click:()->Unit){
- Box(Modifier.height(40.dp).clip(RoundedCornerShape(11.dp)).background(if(primary)DeskColors.cobalt else DeskColors.raised).clickable(enabled=enabled,onClick=click).padding(horizontal=13.dp),contentAlignment=Alignment.Center){Text(label,color=if(enabled)DeskColors.text else DeskColors.muted.copy(alpha=.5f),fontSize=13.sp,fontWeight=FontWeight.Medium)}
+ Box(Modifier.heightIn(min=48.dp).clip(RoundedCornerShape(11.dp)).background(if(primary)DeskColors.cobalt else DeskColors.raised).clickable(enabled=enabled,onClick=click).padding(horizontal=13.dp),contentAlignment=Alignment.Center){Text(label,color=if(enabled)DeskColors.text else DeskColors.muted.copy(alpha=.5f),fontSize=13.sp,fontWeight=FontWeight.Medium)}
 }
 @Composable internal fun DeskSegments(items:List<String>,selected:String,choose:(String)->Unit,refresh:(()->Unit)?=null){
  Row(Modifier.fillMaxWidth().height(48.dp).horizontalScroll(rememberScrollState()),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(6.dp)){

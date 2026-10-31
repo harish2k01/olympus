@@ -38,6 +38,7 @@ import kotlin.math.*
    "Apps"->{listOf(3f,14f).forEach{x->listOf(3f,14f).forEach{y->path(x to y,x+7 to y,x+7 to y+7,x to y+7,close=true)}}}
    "GitOps"->{line(6f,5f,6f,18f);path(6f to 14f,16f to 8f,16f to 5f);listOf(6f to 3f,16f to 3f,6f to 20f).forEach{(x,y)->drawCircle(color,2*u,Offset(x*u,y*u),style=Stroke(stroke))}}
    "Back"->path(15f to 4f,7f to 12f,15f to 20f)
+   "Edit"->{line(4f,6f,20f,6f);line(4f,12f,20f,12f);line(4f,18f,20f,18f);drawCircle(DeskColors.background,2*u,Offset(9*u,6*u));drawCircle(color,2*u,Offset(9*u,6*u),style=Stroke(stroke));drawCircle(color,2*u,Offset(15*u,12*u),style=Stroke(stroke));drawCircle(color,2*u,Offset(9*u,18*u),style=Stroke(stroke))}
    "Settings"->{drawCircle(color,7*u,Offset(12*u,12*u),style=Stroke(stroke));drawCircle(color,2.5f*u,Offset(12*u,12*u),style=Stroke(stroke));repeat(8){i->val a=i*PI/4;line((12+7*cos(a)).toFloat(),(12+7*sin(a)).toFloat(),(12+10*cos(a)).toFloat(),(12+10*sin(a)).toFloat())}}
    else->{val points=(0..6).map{i->val a=-PI/2+i*2*PI/7;((12+10*cos(a)).toFloat() to (12+10*sin(a)).toFloat())};path(*points.toTypedArray(),close=true);path(7f to 12f,12f to 8f,17f to 12f,17f to 17f,7f to 17f,close=true);repeat(3){i->drawCircle(color,1*u,Offset((9+3*i)*u,14*u))}}
   }

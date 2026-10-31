@@ -7,3 +7,9 @@ internal fun mergeAttention(legacy:List<AttentionItem>,active:List<LabEvent>):Li
  val covered=relevant.mapNotNull{e->when{e.id.startsWith("node:")->"node:"+e.id.removePrefix("node:").substringBefore(":");e.id.startsWith("app:")->"app:"+e.id.removePrefix("app:");e.id.startsWith("monitor:")->"app:uptime-kuma";else->null}}.toSet()
  return (relevant.map{AttentionItem(it.title,"event:"+it.id,if(it.state=="Unknown")"Unconfirmed"else it.state+" · "+it.kind)}+legacy.filter{it.target !in covered}).distinctBy{it.title}
 }
+
+/** Current-state wording is separate from the original payload kept in technical details. */
+internal fun incidentTitle(event:LabEvent):String {
+ val title=when(event.title){"CPUThrottlingHigh"->"CPU throttling";"NodeDiskIOSaturation"->"Node disk I/O saturation";"NodeSystemSaturation"->"Node system saturation";else->event.title}
+ return if(event.state=="Resolved")title.replace("requires attention","recovered",ignoreCase=true) else title
+}

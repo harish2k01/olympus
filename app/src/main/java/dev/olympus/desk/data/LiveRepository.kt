@@ -104,7 +104,7 @@ object LiveRepository {
         monitorsUp=if(root.isNull("monitorsUp"))null else root.getInt("monitorsUp");monitorsTotal=if(root.isNull("monitorsTotal"))null else root.getInt("monitorsTotal")
         val rows=org.json.JSONArray(payload.second);events=(0 until rows.length()).map{val e=rows.getJSONObject(it);event(e)}
         time=root.getString("time");lastSuccess=System.currentTimeMillis();state=if(root.getJSONArray("errors").length()>0)"Live · Partial data" else "Live"
-        if(newSample){record("cpu",cpuPercent);record("memory",memoryPercent);nodes.forEach{if(it.available){record("node:${it.name}",it.cpuPercent)}};services.forEach{record("app:${it.name}:cpu",it.cpu);record("app:${it.name}:memory",it.memory)}}
+        if(newSample){monitors.forEach{record("monitor:${it.id}",it.responseMs)};record("cpu",cpuPercent);record("memory",memoryPercent);nodes.forEach{if(it.available){record("node:${it.name}",it.cpuPercent)}};services.forEach{record("app:${it.name}:cpu",it.cpu);record("app:${it.name}:memory",it.memory)}}
     }
     fun applyFrame(frame:String){val root=JSONObject(frame);apply(root.getJSONObject("snapshot").toString() to root.getJSONArray("events").toString())}
     fun checkFreshness(){if(lastSuccess>0&&System.currentTimeMillis()-lastSuccess>45000)state="Stale"}

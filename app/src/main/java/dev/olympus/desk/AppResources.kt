@@ -64,6 +64,17 @@ private fun shortKind(kind:String)=when(kind){"Application"->"APP";"Deployment"-
 @Composable private fun ResourceTree(details:JSONObject){
  val values=details.optJSONArray("nodes")?:return
  val nodes=(0 until values.length()).map{val item=values.getJSONObject(it);val parents=item.optJSONArray("parents");ResourceNode(item.getString("id"),item.getString("kind"),item.getString("name"),item.optString("namespace"),item.optString("health"),item.optString("sync"),(0 until (parents?.length()?:0)).map{parents!!.getString(it)})}
+ var presentation by rememberSaveable{mutableStateOf("Map")}
+ CompactTabs(listOf("Map","List"),presentation,{presentation=it})
+ if(presentation=="List"){
+  nodes.sortedWith(compareBy({it.kind},{it.name})).forEach{node->Column(Modifier.fillMaxWidth().padding(vertical=8.dp)){
+   Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween){Text(node.kind,color=TreeBlue,fontSize=12.sp);Text(node.health.ifBlank{node.sync},color=if(node.health=="Healthy")TreeGreen else TreeMuted,fontSize=12.sp)}
+   Text(node.name,color=TreePaper,fontSize=14.sp)
+   if(node.namespace.isNotBlank())Text(node.namespace,color=TreeMuted,fontSize=11.sp)
+   HorizontalDivider(color=DeskColors.raised,modifier=Modifier.padding(top=10.dp))
+  }}
+  return
+ }
  val known=nodes.map{it.id}.toSet();val levels=mutableMapOf<String,Int>();nodes.filter{it.parents.none{p->p in known}}.forEach{levels[it.id]=0}
  repeat(nodes.size.coerceAtMost(20)){nodes.forEach{node->if(node.id !in levels&&node.parents.any{it in levels})levels[node.id]=(node.parents.mapNotNull{levels[it]}.maxOrNull()?:0)+1}}
  val layers=nodes.groupBy{levels[it.id]?:0}.toSortedMap().mapValues{(_,list)->list.sortedWith(compareBy({it.kind},{it.name}))}

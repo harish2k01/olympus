@@ -71,6 +71,10 @@ private fun JSONArray?.objects()=(0 until (this?.length()?:0)).map{this!!.getJSO
  val node=details.getJSONObject("node");val status=node.getJSONObject("Status");val spec=node.getJSONObject("Spec")
  when(section){
   "Overview"->{
+   val conditions=status.optJSONArray("Conditions").objects()
+   val pressure=conditions.filter{it.optString("type").endsWith("Pressure")&&it.optString("status")=="True"}
+   Row(Modifier.fillMaxWidth().padding(vertical=8.dp),horizontalArrangement=Arrangement.SpaceBetween){Text(if(metric?.ready==true)"Node ready"else"Readiness unconfirmed",color=if(metric?.ready==true)DeskColors.green else DeskColors.apricot,fontSize=14.sp);Text(if(pressure.isEmpty())"No pressure conditions"else"${pressure.size} pressure conditions",color=if(pressure.isEmpty())DetailMuted else DeskColors.apricot,fontSize=12.sp)}
+   Text("Full tables scroll horizontally",color=DetailMuted,fontSize=10.sp)
    DetailTable("Conditions",listOf("Type","Status","Last heartbeat","Last transition","Reason","Message"),listOf(170,75,165,165,230,330),status.optJSONArray("Conditions").objects().map{c->listOf(c.optString("type"),c.optString("status"),localTime(c.optString("lastHeartbeatTime")),localTime(c.optString("lastTransitionTime")),c.optString("reason"),c.optString("message"))})
    val capacity=status.optJSONObject("Capacity")?:JSONObject();val allocatable=status.optJSONObject("Allocatable")?:JSONObject()
    DetailTable("Capacity & allocatable",listOf("Resource","Capacity","Allocatable"),listOf(185,210,210),capacity.keys().asSequence().sorted().map{key->listOf(key,capacity.optString(key),allocatable.optString(key))}.toList())

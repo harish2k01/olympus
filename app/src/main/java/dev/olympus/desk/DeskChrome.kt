@@ -28,10 +28,10 @@ internal val LocalReducedMotion=staticCompositionLocalOf{false}
 
 @Composable internal fun FloatingDock(selected:String,select:(String)->Unit){
  Row(Modifier.widthIn(max=410.dp).fillMaxWidth(.88f).shadow(18.dp,RoundedCornerShape(25.dp)).clip(RoundedCornerShape(25.dp)).background(Color(0xF52A3040)).border(1.dp,Color.White.copy(alpha=.12f),RoundedCornerShape(25.dp)).padding(5.dp),horizontalArrangement=Arrangement.spacedBy(4.dp)){
-  listOf("Home" to "⌂","Nodes" to "▤","Apps" to "⊞","Monitors" to "◉","Events" to "◷").forEach{(name,icon)->
+  listOf("Home" to "Home","Cluster" to "Nodes","Services" to "Apps","Inbox" to "Events").forEach{(name,icon)->
    
-   Column(Modifier.weight(1f).clip(RoundedCornerShape(20.dp)).background(if(selected==name)Color(0xFF465DD1)else Color.Transparent).clickable{select(name)}.padding(vertical=7.dp),horizontalAlignment=Alignment.CenterHorizontally){
-    LabGlyph(name,if(selected==name)Color.White else Color(0xFFBFC4D1),24.dp)
+   Column(Modifier.weight(1f).clip(RoundedCornerShape(20.dp)).background(if(selected==name)Color(0xFF465DD1)else Color.Transparent).clickable{select(name)}.heightIn(min=48.dp).heightIn(min=48.dp).padding(vertical=7.dp),horizontalAlignment=Alignment.CenterHorizontally){
+    LabGlyph(icon,if(selected==name)Color.White else Color(0xFFBFC4D1),24.dp)
     Text(name,color=if(selected==name)Color.White else Color(0xFFBFC4D1),fontSize=10.sp)
    }
   }
@@ -41,9 +41,11 @@ internal val LocalReducedMotion=staticCompositionLocalOf{false}
 
 @Composable internal fun wideWindow()=LocalWindowInfo.current.containerSize.width/LocalDensity.current.density>650
 
+internal fun currentClusterMood()=clusterMood(LiveRepository.state.startsWith("Live"),LiveRepository.signals.isNotEmpty()&&LiveRepository.signals.values.all{it},LiveRepository.nodes.size,LiveRepository.nodes.count{!it.ready},LiveRepository.services.size,LiveRepository.services.count{it.health!="Healthy"||it.sync!="Synced"}+LiveRepository.issues.size,LiveRepository.monitors.size,LiveRepository.monitors.count{it.status=="Down"},LiveRepository.active.count{it.state=="Firing"&&!isInformational(it.kind)},LiveRepository.active.count{it.state=="Pending"&&!isInformational(it.kind)},LiveRepository.active.count{it.state=="Unknown"},LiveRepository.active.count{it.state=="Firing"&&it.kind.lowercase() in listOf("critical","high","fatal")})
+
 /** Draws locally from the shared live snapshot; no requests or additional assets. */
 @Composable internal fun ClusterMascot(modifier:Modifier=Modifier){
- val mood=clusterMood(LiveRepository.state.startsWith("Live"),LiveRepository.signals.isNotEmpty()&&LiveRepository.signals.values.all{it},LiveRepository.nodes.size,LiveRepository.nodes.count{!it.ready},LiveRepository.services.size,LiveRepository.services.count{it.health!="Healthy"||it.sync!="Synced"}+LiveRepository.issues.size,LiveRepository.monitors.size,LiveRepository.monitors.count{it.status=="Down"},LiveRepository.active.count{it.state=="Firing"&&!isInformational(it.kind)},LiveRepository.active.count{it.state=="Pending"&&!isInformational(it.kind)},LiveRepository.active.count{it.state=="Unknown"},LiveRepository.active.count{it.state=="Firing"&&it.kind.lowercase() in listOf("critical","high","fatal")})
+ val mood=currentClusterMood()
  val reduced=LocalReducedMotion.current
  var hover=0f;var phase=0f;var angle=0f
  if(!reduced){val motion=rememberInfiniteTransition(label="cluster_smiley")

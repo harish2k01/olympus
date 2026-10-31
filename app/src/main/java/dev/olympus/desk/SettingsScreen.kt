@@ -56,22 +56,24 @@ internal val LocalGridGap=staticCompositionLocalOf{10}
       Column(Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()).padding(top=8.dp,bottom=20.dp),verticalArrangement=Arrangement.spacedBy(10.dp)){
        when(section){
         "Display"->{
-         SettingsHeading("Screen")
-         SettingsGroup{
-          SettingSwitch("Keep screen awake",awake){bool("keepAwake",it,setAwake)}
-          SettingsDivider()
-          SettingSwitch("Dim desk mode",dimMode){bool("deskMode",it,setDimMode)}
-          if(dimMode){SettingsRange("App brightness","${(dim*100).toInt()}%",dim,.05f..1f){prefs.edit().putFloat("brightness",it).apply();setDim(it)}}
-          SettingsDivider()
-          SettingSwitch("Reduce motion",reduced){bool("reducedMotion",it,setReduced)}
-         }
-         SettingsHeading("Navigation")
-         SettingsGroup{
-          SettingSwitch("Focus mode",focus){bool("focusMode",it,setFocus)}
-          Text("Hide header when idle · touch to reveal",color=DeskColors.muted,fontSize=11.sp,modifier=Modifier.padding(start=12.dp,end=12.dp,bottom=12.dp))
-          SettingsDivider()
-          SettingsRange("Dock hide delay","${dock}s",dock.toFloat(),2f..15f,12){val n=it.toInt();prefs.edit().putInt("dockSeconds",n).apply();setDock(n)}
-         }
+         @Composable fun screen(){Column(verticalArrangement=Arrangement.spacedBy(8.dp)){
+          SettingsHeading("Screen")
+          SettingsGroup{
+           SettingSwitch("Keep screen awake",awake){bool("keepAwake",it,setAwake)}
+           SettingsDivider();SettingSwitch("Dim desk mode",dimMode){bool("deskMode",it,setDimMode)}
+           if(dimMode)SettingsRange("App brightness","${(dim*100).toInt()}%",dim,.05f..1f){prefs.edit().putFloat("brightness",it).apply();setDim(it)}
+           SettingsDivider();SettingSwitch("Reduce motion",reduced){bool("reducedMotion",it,setReduced)}
+          }
+         }}
+         @Composable fun navigation(){Column(verticalArrangement=Arrangement.spacedBy(8.dp)){
+          SettingsHeading("Navigation")
+          SettingsGroup{
+           SettingSwitch("Focus mode",focus){bool("focusMode",it,setFocus)}
+           Text("Hide header when idle · touch to reveal",color=DeskColors.muted,fontSize=11.sp,modifier=Modifier.padding(horizontal=12.dp,vertical=8.dp))
+           SettingsDivider();SettingsRange("Dock hide delay","${dock}s",dock.toFloat(),2f..15f,12){val n=it.toInt();prefs.edit().putInt("dockSeconds",n).apply();setDock(n)}
+          }
+         }}
+         if(wideWindow())Row(horizontalArrangement=Arrangement.spacedBy(14.dp)){Box(Modifier.weight(1f)){screen()};Box(Modifier.weight(1f)){navigation()}}else{screen();navigation()}
         }
         "Home"->{
          SettingsHeading("Layout")
@@ -160,7 +162,7 @@ internal val LocalGridGap=staticCompositionLocalOf{10}
  }
 }
 
-@Composable internal fun MonitorScreen(){
+@Composable internal fun MonitorScreen(open:(String)->Unit={}){
  var search by remember{mutableStateOf("")};var status by remember{mutableStateOf("All")}
  if(wideWindow())Row(verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(10.dp)){Box(Modifier.weight(1f)){DeskSearch(search,{search=it},"Search monitors")};Box(Modifier.width(350.dp)){CompactTabs(listOf("All","Up","Down","Pending","Maintenance"),status,{status=it})}}
  else {DeskSearch(search,{search=it},"Search monitors");CompactTabs(listOf("All","Up","Down","Pending","Maintenance"),status,{status=it})}
@@ -168,7 +170,7 @@ internal val LocalGridGap=staticCompositionLocalOf{10}
  if(LiveRepository.monitors.isEmpty())Text("Monitor readings unavailable",modifier=Modifier.padding(16.dp),color=DeskColors.muted)
  val columns=if(wideWindow())2 else 1
  rows.chunked(columns).forEach{group->Row(Modifier.fillMaxWidth().padding(vertical=4.dp),horizontalArrangement=Arrangement.spacedBy(10.dp)){
-  group.forEach{m->Row(Modifier.weight(1f).background(DeskColors.surface,RoundedCornerShape(14.dp)).padding(10.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(10.dp)){
+  group.forEach{m->Row(Modifier.weight(1f).clip(RoundedCornerShape(14.dp)).background(DeskColors.surface).clickable{open(m.id)}.padding(14.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(10.dp)){
    Box(Modifier.size(7.dp).background(if(m.status=="Up")DeskColors.green else DeskColors.apricot,RoundedCornerShape(4.dp)))
    Column(Modifier.weight(1f)){Text(m.name,fontSize=13.sp,maxLines=1);Text("${m.type} · ${m.status}",color=DeskColors.muted,fontSize=11.sp)}
    Text(m.responseMs?.let{"${it.toInt()} ms"}?:"—",color=DeskColors.lilac,fontSize=13.sp)
