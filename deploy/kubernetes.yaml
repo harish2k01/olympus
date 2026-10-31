@@ -17,6 +17,9 @@ rules:
   - apiGroups: [""]
     resources: [nodes, events, pods]
     verbs: [get, list, watch]
+  - apiGroups: [""]
+    resources: [pods/log]
+    verbs: [get]
   - apiGroups: [apps]
     resources: [replicasets, deployments, statefulsets, daemonsets]
     verbs: [get, list]
@@ -68,7 +71,7 @@ spec:
         seccompProfile: {type: RuntimeDefault}
       containers:
         - name: api
-          image: ghcr.io/harish2k01/olympus-backend:6eb1627def8c96a28688b99de3365b4570254eea
+          image: ghcr.io/harish2k01/olympus-backend:daa9e653729f537c00ac750b52ca0e7bf2db6075
           ports: [{name: http, containerPort: 8080}]
           envFrom:
             - secretRef: {name: olympus-auth}
