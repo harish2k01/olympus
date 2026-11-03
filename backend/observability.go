@@ -131,7 +131,7 @@ func (b *broker) current() ([]byte, uint64, chan struct{}) {
 	return b.frame, b.revision, b.changed
 }
 func (s *server) stream(w http.ResponseWriter, r *http.Request) {
-	if !auth(r.Header.Get("Authorization"), s.token) {
+	if !s.readAuthorized(r.Header.Get("Authorization")) {
 		write(w, 401, map[string]string{"error": "Unauthorized"})
 		return
 	}

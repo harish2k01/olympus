@@ -91,6 +91,7 @@ type vector struct {
 	Value  []json.RawMessage `json:"value"`
 }
 type server struct {
+ pairing pairingCodes
  metricCache map[string]metricCacheEntry
 	client                                  *http.Client
 	kube                                    *http.Client
@@ -373,7 +374,7 @@ func auth(header, expected string) bool {
 	return expected != "" && subtle.ConstantTimeCompare([]byte(header), []byte("Bearer "+expected)) == 1
 }
 func (s *server) api(w http.ResponseWriter, r *http.Request) {
-	if !auth(r.Header.Get("Authorization"), s.token) {
+	if !s.readAuthorized(r.Header.Get("Authorization")) {
 		write(w, 401, map[string]string{"error": "Unauthorized"})
 		return
 	}
@@ -508,6 +509,8 @@ func main() {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) { w.Write([]byte("ok")) })
 	mux.HandleFunc("/v1/stream", s.stream)
+ mux.HandleFunc("/v1/pairing/code", s.issuePairingCode)
+ mux.HandleFunc("/v1/pairing/exchange", s.exchangePairingCode)
 	mux.HandleFunc("/v1/", s.api)
 	mux.HandleFunc("/hooks/", s.webhook)
 	slog.Info("server_started", "port", 8080, "history_enabled", s.history != "")

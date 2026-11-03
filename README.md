@@ -72,3 +72,17 @@ Olympus 0.7 uses compact contextual controls, responsive node condition tables, 
 Background live alerts are opt-in in Settings. An ongoing notification provides connection state and Stop. Settings controls app/recovery notifications, source selection and quiet hours. Existing records establish the initial baseline; unchanged incident states, pending conditions and informational alerts do not generate incident pages. This is a direct live connection, not a cloud push service; delivery depends on network access and device background restrictions. Special-use foreground-service declarations require review before Play distribution, and Android 13+ requires notification permission.
 
 Home layouts are stored separately by orientation and version. The new default follows the approved eight-column landscape composition and places attention first in portrait. Existing v0.6 layouts remain available through Restore previous layout. Resizing, drag placement and configuration retain independent dimensions and undo.
+
+### QR pairing
+
+An operator can request a one-time QR code using the backend API token. From PowerShell 7, enter the token at the secure prompt and display the PNG locally.
+
+```powershell
+$address = 'https://olympus.k8s.harish2k01.xyz'
+$operatorToken = Read-Host 'Olympus operator token' -AsSecureString
+$qrPath = Join-Path ([IO.Path]::GetTempPath()) 'olympus-pairing.png'
+Invoke-WebRequest "$address/v1/pairing/code" -Method Post -Authentication Bearer -Token $operatorToken -Headers @{Accept = 'image/png'} -ContentType 'application/json' -Body (@{url = $address} | ConvertTo-Json -Compress) -OutFile $qrPath
+Invoke-Item -LiteralPath $qrPath
+```
+
+In Olympus, open Settings → Connection → Scan pairing QR and confirm the backend address. The code expires after five minutes or its first use. Remove the PNG after pairing. The app stores a read credential in Android Keystore-backed storage. Device credentials cannot issue more pairing codes. Rotating the operator token invalidates previously issued device credentials.
