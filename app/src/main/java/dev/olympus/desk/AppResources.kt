@@ -21,11 +21,11 @@ import dev.olympus.desk.data.*
 import kotlinx.coroutines.launch
 import org.json.JSONObject
 
-private val TreePaper=Color(0xFFF5F3EF)
-private val TreeMuted=Color(0xFFBFC4D1)
-private val TreeBlue=Color(0xFF879BFF)
-private val TreeGreen=Color(0xFFB4DFBE)
-private val TreeWarm=Color(0xFFEDB48F)
+private val TreePaper: Color @Composable get() = DeskColors.text
+private val TreeMuted: Color @Composable get() = DeskColors.muted
+private val TreeBlue: Color @Composable get() = DeskColors.blue
+private val TreeGreen: Color @Composable get() = DeskColors.green
+private val TreeWarm: Color @Composable get() = DeskColors.apricot
 private data class ResourceNode(val id:String,val kind:String,val name:String,val namespace:String,val health:String,val sync:String,val parents:List<String>)
 private fun shortKind(kind:String)=when(kind){"Application"->"APP";"Deployment"->"DEP";"ReplicaSet"->"RS";"StatefulSet"->"STS";"DaemonSet"->"DS";"Service"->"SVC";"PersistentVolumeClaim"->"PVC";"HTTPRoute"->"HTTP";"ConfigMap"->"CM";"Pod"->"POD";"ClusterRole"->"CR";"ClusterRoleBinding"->"CRB";"ServiceAccount"->"SA";"Secret"->"SEC";else->kind.take(4).uppercase()}
 
@@ -37,7 +37,7 @@ private fun shortKind(kind:String)=when(kind){"Application"->"APP";"Deployment"-
  Row(Modifier.fillMaxWidth().padding(top=2.dp).horizontalScroll(rememberScrollState()),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(7.dp)){
   Text("APP",color=TreeBlue,fontSize=9.sp,fontWeight=FontWeight.SemiBold)
   Text("→",color=TreeMuted,fontSize=14.sp)
-  grouped.forEach{(kind,count)->Column(Modifier.clip(RoundedCornerShape(9.dp)).background(Color(0xFF30384A)).padding(horizontal=6.dp,vertical=4.dp),horizontalAlignment=Alignment.CenterHorizontally){Text(shortKind(kind),color=TreePaper,fontSize=9.sp,fontWeight=FontWeight.SemiBold);Text("$count",color=TreeMuted,fontSize=10.sp)}}
+  grouped.forEach{(kind,count)->Column(Modifier.clip(RoundedCornerShape(9.dp)).background(DeskColors.raised).padding(horizontal=6.dp,vertical=4.dp),horizontalAlignment=Alignment.CenterHorizontally){Text(shortKind(kind),color=TreePaper,fontSize=9.sp,fontWeight=FontWeight.SemiBold);Text("$count",color=TreeMuted,fontSize=10.sp)}}
  }
 }
 
@@ -51,12 +51,14 @@ private fun shortKind(kind:String)=when(kind){"Application"->"APP";"Deployment"-
   Column(Modifier.weight(1f)){Text(app.health,color=if(app.health=="Healthy")TreeGreen else TreeWarm,fontWeight=FontWeight.SemiBold);Text("${app.sync} · ${app.namespace} · ${app.ready}/${app.pods} pods",color=TreeMuted,fontSize=11.sp)}
   if(app.url.startsWith("https://"))TextButton(onClick={context.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW,android.net.Uri.parse(app.url)))}){Text("Open ↗",color=TreeBlue)}
  }
+ if (app.lastSync.isNotBlank()) Text("Last sync · ${localTime(app.lastSync)}", color = TreeMuted, fontSize = 12.sp)
+ DashboardActions(argoApplication = name)
  var tab by rememberSaveable(name){mutableStateOf("Resources")}
  CompactTabs(listOf("Resources","Usage","Events"),tab,{tab=it}){scope.launch{Pairing.read(context)?.let{LiveRepository.loadApp(it,name)}}}
 
  when(tab){
   "Resources"->{val details=LiveRepository.appDetails;if(details==null){Text(if(LiveRepository.appError)"Resource map unavailable"else"Loading resources…",color=TreeMuted,modifier=Modifier.padding(18.dp))}else{if(details.optBoolean("partial"))Text("Some resource data is unavailable",color=TreeWarm,fontSize=11.sp);ResourceTree(details,open)}}
-  "Usage"->{DetailTable("Workload usage",listOf("Metric","Value"),listOf(240,250),listOf(listOf("CPU",if(app.cpu==null)"Unavailable"else"${(app.cpu*1000).toInt()}m"),listOf("Memory",if(app.memory==null)"Unavailable"else"${app.memory.toInt()} MiB"),listOf("Ready pods","${app.ready}/${app.pods}")));Text("CPU",color=TreeMuted,modifier=Modifier.padding(top=20.dp));Spark(LiveRepository.history["app:$name:cpu"]?:emptyList(),TreeBlue);Text("Memory",color=TreeMuted,modifier=Modifier.padding(top=20.dp));Spark(LiveRepository.history["app:$name:memory"]?:emptyList(),Color(0xFFCDC5FF))}
+  "Usage"->{DetailTable("Workload usage",listOf("Metric","Value"),listOf(240,250),listOf(listOf("CPU",if(app.cpu==null)"Unavailable"else"${(app.cpu*1000).toInt()}m"),listOf("Memory",if(app.memory==null)"Unavailable"else"${app.memory.toInt()} MiB"),listOf("Ready pods","${app.ready}/${app.pods}")));Text("CPU",color=TreeMuted,modifier=Modifier.padding(top=20.dp));Spark(LiveRepository.history["app:$name:cpu"]?:emptyList(),TreeBlue);Text("Memory",color=TreeMuted,modifier=Modifier.padding(top=20.dp));Spark(LiveRepository.history["app:$name:memory"]?:emptyList(),DeskColors.lilac)}
   "Events"->{val events=LiveRepository.events.filter{it.source.contains(name,true)||it.detail.contains(name,true)};if(events.isEmpty())Text("No matching events",color=TreeMuted,modifier=Modifier.padding(18.dp));events.forEach{event->EventRow(event){open("event:${event.id}")}}}
  }
 }
@@ -88,7 +90,7 @@ private fun shortKind(kind:String)=when(kind){"Application"->"APP";"Deployment"-
     Canvas(Modifier.matchParentSize()){
      nodes.forEach{node->val end=points[node.id]?:return@forEach;node.parents.forEach{parent->val start=points[parent]?:return@forEach;val a=Offset((start.first+146).dp.toPx(),(start.second+nodeHeight/2).dp.toPx());val b=Offset(end.first.dp.toPx(),(end.second+nodeHeight/2).dp.toPx());val path=Path().apply{moveTo(a.x,a.y);cubicTo(a.x+18.dp.toPx(),a.y,b.x-18.dp.toPx(),b.y,b.x,b.y)};drawPath(path,Color(0xFF66758D),style=androidx.compose.ui.graphics.drawscope.Stroke(1.dp.toPx()))}}
     }
-    nodes.forEach{node->val point=points[node.id]!!;Column(Modifier.offset(point.first.dp,point.second.dp).size(146.dp,nodeHeight.dp).clip(RoundedCornerShape(12.dp)).background(Color(0xFF293244)).border(1.dp,if(node.health=="Healthy")TreeGreen.copy(alpha=.5f)else Color(0xFF52607A),RoundedCornerShape(12.dp)).clickable{selected=node}.padding(if(presentation=="Fit")5.dp else 9.dp)){
+    nodes.forEach{node->val point=points[node.id]!!;Column(Modifier.offset(point.first.dp,point.second.dp).size(146.dp,nodeHeight.dp).clip(RoundedCornerShape(12.dp)).background(DeskColors.raised).border(1.dp,if(node.health=="Healthy")TreeGreen.copy(alpha=.5f)else Color(0xFF52607A),RoundedCornerShape(12.dp)).clickable{selected=node}.padding(if(presentation=="Fit")5.dp else 9.dp)){
      Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween){Text(shortKind(node.kind),color=TreeBlue,fontSize=9.sp,lineHeight=10.sp,fontWeight=FontWeight.Bold);Text(node.health.ifBlank{node.sync},color=if(node.health=="Healthy")TreeGreen else TreeMuted,fontSize=9.sp,lineHeight=10.sp,maxLines=1)}
      Text(node.name,color=TreePaper,fontSize=10.sp,lineHeight=12.sp,maxLines=1,overflow=TextOverflow.Ellipsis,modifier=Modifier.padding(top=if(presentation=="Fit")2.dp else 5.dp))
     }}
@@ -106,4 +108,27 @@ private fun shortKind(kind:String)=when(kind){"Application"->"APP";"Deployment"-
   Text(listOf(node.kind,node.namespace).filter{it.isNotBlank()}.joinToString(" · "),color=TreeMuted,fontSize=12.sp)
   Row(horizontalArrangement=Arrangement.spacedBy(8.dp)){if(node.kind=="Pod")DeskAction("Inspect container & logs",true){selected=null;open("pod:${node.namespace}/${node.name}@")};DeskAction("Close"){selected=null}}
  }}
+}
+
+@Composable
+internal fun DashboardActions(argoApplication: String? = null) {
+ val context = LocalContext.current
+ val argo = LiveRepository.dashboardLinks["argo"]
+ val grafana = LiveRepository.dashboardLinks["grafana"]
+ if (argo == null && grafana == null) return
+ fun open(url: String) {
+  runCatching { context.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(url))) }
+ }
+ Row(
+  Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(vertical = 4.dp),
+  horizontalArrangement = Arrangement.spacedBy(8.dp)
+ ) {
+  argo?.let { address ->
+   DeskAction("Open Argo CD") {
+    open(if (argoApplication == null) address else android.net.Uri.parse(address).buildUpon()
+     .appendPath("applications").appendPath("argocd").appendPath(argoApplication).build().toString())
+   }
+  }
+  grafana?.let { address -> DeskAction("Open Grafana") { open(address) } }
+ }
 }

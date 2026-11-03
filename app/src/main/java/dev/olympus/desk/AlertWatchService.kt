@@ -18,8 +18,20 @@ class AlertWatchService:Service(){
   val stop=PendingIntent.getService(this,1,Intent(this,AlertWatchService::class.java).setAction("stop"),PendingIntent.FLAG_IMMUTABLE)
   return Notification.Builder(this,"watch").setSmallIcon(R.drawable.ic_stat_olympus).setContentTitle("Olympus live alert watch").setContentText(text).setContentIntent(content()).setOngoing(true).setOnlyAlertOnce(true).addAction(Notification.Action.Builder(null,"Stop",stop).build()).build()
  }
- override fun onCreate(){super.onCreate();manager.createNotificationChannel(NotificationChannel("watch","Live alert connection",NotificationManager.IMPORTANCE_LOW));manager.createNotificationChannel(NotificationChannel("incidents","Cluster incidents",NotificationManager.IMPORTANCE_DEFAULT))}
+ override fun onCreate() {
+  super.onCreate()
+  ensureOlympusNotificationChannels(this)
+ }
+ private fun channel(event: LabEvent) = when {
+  event.state == "Resolved" || event.state == "Recovery" -> "resolved"
+  event.state == "Firing" && event.kind.equals("critical", ignoreCase = true) -> "critical"
+  event.state == "Firing" -> "warning"
+  else -> "notices"
+ }
  override fun onStartCommand(intent:Intent?,flags:Int,startId:Int):Int{
+  if (intent?.action == "silence") {
+   prefs.edit().putLong("notificationsSilencedUntil", System.currentTimeMillis() + 3_600_000L).apply()
+  }
   if(intent?.action=="stop"||!prefs.getBoolean("backgroundAlerts",false)){prefs.edit().putBoolean("backgroundAlerts",false).apply();stopSelf();return START_NOT_STICKY}
   startForeground(41,ongoing("Connecting to your cluster"))
   if(watcher?.isActive==true)return START_NOT_STICKY
@@ -30,24 +42,31 @@ class AlertWatchService:Service(){
    while(isActive&&prefs.getBoolean("backgroundAlerts",false)){
     val pair=Pairing.read(this@AlertWatchService)
     if(pair==null){manager.notify(41,ongoing("Pairing required"));delay(5000);continue}
+    LiveRepository.reconnecting()
     try{
      LiveRepository.stream(pair).collect{frame->
-      LiveRepository.applyFrame(frame);retry=1000
+      LiveRepository.applyFrame(frame);OlympusStatusWidget.publish(this@AlertWatchService);retry=1000
       val events=(LiveRepository.active+LiveRepository.events).distinctBy{it.id}
       val sources=prefs.getStringSet("notificationSources",null)
       val quiet=prefs.getBoolean("quietHours",false)&&quietHour(LocalTime.now().hour,prefs.getInt("quietStart",22),prefs.getInt("quietEnd",7))
-      if(seeded&&!quiet){
-       val eligible=alertCandidates(events,seen,prefs.getBoolean("appNotifications",true),prefs.getBoolean("recoveryNotifications",false)).filter{sources==null||it.source in sources}
+      val silenced = System.currentTimeMillis() < prefs.getLong("notificationsSilencedUntil", 0L)
+      if(seeded){
+       val eligible=alertCandidates(events,seen,prefs.getBoolean("appNotifications",true),prefs.getBoolean("recoveryNotifications",false)).filter { (sources == null || it.source in sources) && shouldNotifyNow(quiet, silenced, channel(it) == "critical") }
        eligible.take(10).forEach{event->
         val detail=listOf(event.node,event.namespace,event.pod).filter{it.isNotBlank()}.joinToString(" · ")
-        val notification=Notification.Builder(this@AlertWatchService,"incidents").setSmallIcon(R.drawable.ic_stat_olympus).setContentTitle(incidentTitle(event)).setContentText("${event.source} · ${event.state}"+if(detail.isBlank())""else" · $detail").setContentIntent(content(event.id)).setAutoCancel(true).setOnlyAlertOnce(true).setGroup("olympus-incidents").build()
+        val silence = PendingIntent.getService(this@AlertWatchService, 2,
+         Intent(this@AlertWatchService, AlertWatchService::class.java).setAction("silence"),
+         PendingIntent.FLAG_IMMUTABLE)
+        val notification=Notification.Builder(this@AlertWatchService,channel(event))
+         .addAction(Notification.Action.Builder(null,"Open",content(event.id)).build())
+         .addAction(Notification.Action.Builder(null,"Silence 1 h",silence).build()).setSmallIcon(R.drawable.ic_stat_olympus).setContentTitle(incidentTitle(event)).setContentText("${event.source} · ${event.state}"+if(detail.isBlank())""else" · $detail").setContentIntent(content(event.id)).setAutoCancel(true).setOnlyAlertOnce(true).setGroup("olympus-incidents").build()
         manager.notify(event.id.hashCode(),notification)
        }
-       if(eligible.size>10)manager.notify(42,Notification.Builder(this@AlertWatchService,"incidents").setSmallIcon(R.drawable.ic_stat_olympus).setContentTitle("${eligible.size} cluster updates").setContentText("${eligible.size-10} additional updates · open Inbox").setContentIntent(content("-inbox-")).setAutoCancel(true).setGroup("olympus-incidents").setGroupSummary(true).build())
+       if(eligible.size>10)manager.notify(42,Notification.Builder(this@AlertWatchService,"notices").setSmallIcon(R.drawable.ic_stat_olympus).setContentTitle("${eligible.size} cluster updates").setContentText("${eligible.size-10} additional updates · open Inbox").setContentIntent(content("-inbox-")).setAutoCancel(true).setGroup("olympus-incidents").setGroupSummary(true).build())
       }
       events.forEach{seen[it.id]=it.state+"|"+it.kind.lowercase()};if(seen.size>2500){val keep=events.map{it.id}.toSet();seen.keys.retainAll(keep)};seeded=true
       manager.notify(41,ongoing(if(LiveRepository.state.contains("Partial"))"Connected · some sources unavailable"else"Connected · ${LiveRepository.active.count{it.state=="Firing"}} firing"))
-      withContext(Dispatchers.IO){try{val file=java.io.File(filesDir,"last-frame.tmp");file.writeText(frame);file.renameTo(java.io.File(filesDir,"last-frame.json"))}catch(_:Exception){}}
+      withContext(Dispatchers.IO) { LiveRepository.cacheFrame(this@AlertWatchService, frame) }
      }
     }catch(e:CancellationException){throw e}catch(_:Exception){LiveRepository.unavailable()}
     manager.notify(41,ongoing("Disconnected · retrying"));LiveRepository.awaitRetry(retry);retry=(retry*2).coerceAtMost(30000)
@@ -63,3 +82,19 @@ internal fun alertCandidates(events:List<LabEvent>,seen:Map<String,String>,apps:
 }
 
 internal fun quietHour(hour:Int,start:Int,end:Int)=if(start==end)false else if(start<end)hour in start until end else hour>=start||hour<end
+
+internal fun ensureOlympusNotificationChannels(context: Context) {
+ val manager = context.getSystemService(NotificationManager::class.java)
+ manager.createNotificationChannels(listOf(
+  NotificationChannel("watch", "Live alert connection", NotificationManager.IMPORTANCE_LOW).apply { setShowBadge(false) },
+  NotificationChannel("critical", "Critical incidents", NotificationManager.IMPORTANCE_HIGH).apply {
+   lockscreenVisibility = Notification.VISIBILITY_PRIVATE
+  },
+  NotificationChannel("warning", "Warnings", NotificationManager.IMPORTANCE_LOW).apply { setShowBadge(true) },
+  NotificationChannel("notices", "Notices", NotificationManager.IMPORTANCE_LOW).apply { setShowBadge(false) },
+  NotificationChannel("resolved", "Resolved incidents", NotificationManager.IMPORTANCE_LOW).apply { setShowBadge(false) }
+ ))
+}
+
+internal fun shouldNotifyNow(quiet: Boolean, silenced: Boolean, critical: Boolean): Boolean =
+ !silenced && (!quiet || critical)

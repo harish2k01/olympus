@@ -21,15 +21,24 @@ import dev.olympus.desk.data.*
 import org.json.JSONObject
 import kotlinx.coroutines.*
 
-private val EventPaper=Color(0xFFF5F3EF)
-private val EventMuted=Color(0xFFBFC4D1)
-private val EventLilac=Color(0xFFCDC5FF)
-private val EventWarm=Color(0xFFEDB48F)
+private val EventPaper: Color @Composable get() = DeskColors.text
+private val EventMuted: Color @Composable get() = DeskColors.muted
+private val EventLilac: Color @Composable get() = DeskColors.lilac
+private val EventWarm: Color @Composable get() = DeskColors.apricot
 private fun sourceApp(source:String)=LiveRepository.services.find{it.name.replace("-","").equals(source.replace(" ","").replace("-",""),true)}
 private fun eventIcon(event:LabEvent)=sourceApp(event.source)?.icon?.ifBlank{null}?:when(event.source){"Kubernetes"->"https://raw.githubusercontent.com/selfhst/icons/main/png/kubernetes.png";"Prometheus"->"https://raw.githubusercontent.com/selfhst/icons/main/png/prometheus.png";else->""}
-private fun groupingKey(e:LabEvent)=listOf(e.source,e.title,e.detail,e.kind)
+private fun eventTag(event: LabEvent): String = when (event.state) {
+ "Firing" -> "FIRING"
+ "Pending" -> "PENDING"
+ "Resolved", "Recovery" -> "RESOLVED"
+ "Unknown" -> "UNCONFIRMED"
+ else -> if (event.source == "Kubernetes") "EVENT" else "NOTICE"
+}
 
-@Composable internal fun NotificationInbox(initialSource:String="All",initialSection:String="Active",recentOnly:Boolean=false,open:(LabEvent)->Unit){
+private fun groupingKey(e: LabEvent) =
+ listOf(e.source, e.title, e.detail, e.kind, eventTag(e), e.namespace, e.resource, e.pod, e.container)
+
+@Composable internal fun NotificationInbox(initialSource:String="All",initialSection:String="All",recentOnly:Boolean=false,open:(LabEvent)->Unit){
  val context=LocalContext.current;val scope=rememberCoroutineScope()
  var source by rememberSaveable(initialSource){mutableStateOf(initialSource)}
  var historyJob by remember{mutableStateOf<Job?>(null)}
@@ -41,35 +50,43 @@ private fun groupingKey(e:LabEvent)=listOf(e.source,e.title,e.detail,e.kind)
  var kindFilter by rememberSaveable { mutableStateOf("All") }
  val showTests=LocalShowTests.current
  LaunchedEffect(period){kindFilter="All"}
- LaunchedEffect(source,period){historyJob?.cancel();older=emptyList();next=0;total=-1;if(period=="History")more()}
+ LaunchedEffect(source,period){historyJob?.cancel();older=emptyList();next=0;total=-1;more()}
 
 
- if(wideWindow())Row(verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(10.dp)){Box(Modifier.weight(1f)){DeskSearch(query,{query=it},"Search events")};Box(Modifier.width(180.dp)){DeskSegments(listOf("Active","History"),period,{period=it})}}
- else {DeskSearch(query,{query=it},"Search events");DeskSegments(listOf("Active","History"),period,{period=it})}
- if(recentOnly&&period=="History")Text("Last 24 hours",color=EventMuted,fontSize=11.sp)
- val all=(LiveRepository.events+older).distinctBy{it.id}
- DeskSegments(listOf("All")+((LiveRepository.active+all).map{it.source}+LiveRepository.deliveries.map{it.name}).filter{showTests||it!="Test"}.distinct().sorted(),source,{source=it;if(it!="All"&&LiveRepository.active.none{event->event.source==it})period="History"})
- val filters = if (period == "Active") listOf("All", "Firing", "Pending")
- else listOf("All", "Resolved", "Notices", "Events")
+ if (period == "History" && recentOnly) Text("Last 24 hours", color = EventMuted, fontSize = 11.sp)
+ val all = (LiveRepository.active + LiveRepository.events + older).distinctBy { it.id }
+ val filters = listOf("All", "Firing", "Pending", "Resolved", "Notices", "Events")
  DeskSegments(filters, kindFilter, { kindFilter = it })
- val activeIds=LiveRepository.active.map{it.id}.toSet()
- val events=(if(period=="Active")LiveRepository.active else if(recentOnly)all else all.filter{it.id !in activeIds}).filter{e->
+ DeskDisclosure("Search and sources") {
+  DeskSearch(query, { query = it }, "Search events")
+  DeskSegments(listOf("All") + (all.map { it.source } + LiveRepository.deliveries.map { it.name })
+   .filter { showTests || it != "Test" }.distinct().sorted(), source, { source = it })
+ }
+ val activeIds = LiveRepository.active.map { it.id }.toSet()
+ val events = all.filter { event ->
+  val tag = eventTag(event)
   val matchesKind = when (kindFilter) {
-   "Firing", "Pending", "Resolved" -> e.state == kindFilter
-   "Notices" -> e.source != "Kubernetes" && e.state in listOf("Activity", "Notification")
-   "Events" -> e.source == "Kubernetes"
-   else -> true
+   "Notices" -> tag == "NOTICE"
+   "Events" -> tag == "EVENT"
+   "All" -> true
+   else -> tag.equals(kindFilter, ignoreCase = true)
   }
-  matchesKind && (period=="Active"||!recentOnly||try{java.time.Instant.parse(e.resolvedAt.ifBlank{e.time}).isAfter(java.time.Instant.now().minusSeconds(86400))}catch(_:Exception){false})&&(query.isBlank()||e.title.contains(query,true)||e.detail.contains(query,true)||e.source.contains(query,true))&&(source=="All"||e.source==source)&&(showTests||!(e.kind=="Test"||e.source=="Test"||e.title=="Test"))}
+  val inWindow = !recentOnly || runCatching {
+   java.time.Instant.parse(event.resolvedAt.ifBlank { event.time }).isAfter(java.time.Instant.now().minusSeconds(86400))
+  }.getOrDefault(false)
+  matchesKind && inWindow && (period != "History" || event.id !in activeIds) &&
+   (query.isBlank() || event.title.contains(query, true) || event.detail.contains(query, true) || event.source.contains(query, true)) &&
+   (source == "All" || event.source == source) && (showTests || !(event.kind == "Test" || event.source == "Test" || event.title == "Test"))
+ }
  if(events.isEmpty())DeskEmpty(if(query.isNotBlank()||source!="All"||kindFilter!="All")"No matching records"else if(period=="Active")"No active incidents"else"No activity received",when{query.isNotBlank()||source!="All"->"Try another source or search.";!LiveRepository.state.startsWith("Live")->"Connection unavailable · showing last known state.";LiveRepository.signals.values.any{!it}->"Some sources are unavailable. Check source delivery below.";period=="Active"->"Connected sources report no active incidents.";else->"Received notifications will appear here."})
  events.groupBy(::groupingKey).values.sortedByDescending{it.first().resolvedAt.ifBlank{it.first().time}}.forEach{group->NotificationRow(group.first(),group.size){open(group.first())}}
- if(period=="History"&&(total<0||next<total||historyError))DeskAction(if(loading)"Loading…"else if(historyError)"Retry history"else"Load history",enabled=!loading){more()}
+ if(total<0||next<total||historyError)DeskAction(if(loading)"Loading…"else if(historyError)"Retry history"else"Load history",enabled=!loading){more()}
  DeskDisclosure("Source delivery"){
   LiveRepository.signals.forEach{(name,available)->Row(Modifier.fillMaxWidth().padding(vertical=6.dp),horizontalArrangement=Arrangement.SpaceBetween){Text(name,color=EventPaper,fontSize=12.sp);Text(if(available)"Collection available"else"Collection unavailable",color=if(available)DeskColors.green else EventWarm,fontSize=11.sp)}}
   LiveRepository.deliveries.forEach{delivery->Row(Modifier.fillMaxWidth().padding(vertical=6.dp).clickable{source=delivery.name;period="History"},horizontalArrangement=Arrangement.SpaceBetween){Text("${delivery.name} · ${delivery.count}",color=EventPaper,fontSize=12.sp);Text("Last received · ${localTime(delivery.lastReceived)}",color=EventMuted,fontSize=11.sp)}}
   if(LiveRepository.deliveryError){Text("Source history unavailable",color=EventWarm,fontSize=12.sp);DeskAction("Retry source history"){scope.launch{Pairing.read(context)?.let{LiveRepository.loadDeliveries(it,true)}}}}
 
-  Text("Collection health does not confirm webhook delivery. Retention: 30 days / 2,000 records; active incidents retained.",color=EventMuted,fontSize=11.sp)
+  Text("Collection health and webhook delivery are measured separately.",color=EventMuted,fontSize=11.sp)
  }
 }
 @Composable private fun NotificationRow(event:LabEvent,count:Int,click:()->Unit){
@@ -77,11 +94,16 @@ private fun groupingKey(e:LabEvent)=listOf(e.source,e.title,e.detail,e.kind)
   AppIcon(eventIcon(event),event.source)
   Column(Modifier.weight(1f),verticalArrangement=Arrangement.spacedBy(3.dp)){
    Text(incidentTitle(event),color=EventPaper,fontSize=14.sp,fontWeight=FontWeight.Medium,maxLines=1,overflow=TextOverflow.Ellipsis)
-   Text(listOf(event.source,event.node.ifBlank{event.namespace},event.pod).filter{it.isNotBlank()}.joinToString(" · "),color=EventMuted,fontSize=11.sp,maxLines=1,overflow=TextOverflow.Ellipsis)
-   if(count>1)Text("$count grouped occurrences",color=EventMuted,fontSize=10.sp)
+   Text(listOf(event.source,event.node.ifBlank{event.namespace},event.pod.ifBlank{event.resource}).filter{it.isNotBlank()}.joinToString(" · "),color=EventMuted,fontSize=11.sp,maxLines=1,overflow=TextOverflow.Ellipsis)
+   if(count>1)Text("$count matching records",color=EventMuted,fontSize=10.sp)
   }
   Column(horizontalAlignment=Alignment.End,verticalArrangement=Arrangement.spacedBy(4.dp)){
-   StatusPill(event.state.ifBlank{event.kind}.replace("Unknown","Unconfirmed"),if(event.state in listOf("Resolved","Recovery"))DeskColors.green else if(event.state in listOf("Activity","Notification")||isInformational(event.kind))DeskColors.muted else EventWarm)
+   StatusPill(eventTag(event), when (eventTag(event)) {
+    "FIRING" -> if (event.kind.equals("critical", true)) DeskColors.critical else EventWarm
+    "PENDING" -> EventWarm
+    "RESOLVED" -> DeskColors.blue
+    else -> DeskColors.muted
+   })
    Text(localTime(event.resolvedAt.ifBlank{event.received.ifBlank{event.time}}),color=EventMuted,fontSize=10.sp)
   }
  }
@@ -121,9 +143,19 @@ private fun groupingKey(e:LabEvent)=listOf(e.source,e.title,e.detail,e.kind)
   if(app!=null)DeskAction("Application"){open("app:${app.name}")}
   if(app?.url?.startsWith("https://")==true)DeskAction("Open source"){context.startActivity(Intent(Intent.ACTION_VIEW,Uri.parse(app.url)))}
  }
- if(event.title.contains("throttl",true)&&event.namespace.isNotBlank()&&event.pod.isNotBlank()&&event.container.isNotBlank()){
-  fun encoded(value:String)=java.net.URLEncoder.encode(value,"UTF-8")
-  MetricHistoryPanel("kind=throttling&namespace=${encoded(event.namespace)}&pod=${encoded(event.pod)}&container=${encoded(event.container)}")
+ DashboardActions(argoApplication = app?.name)
+ if (event.nextStep.isNotBlank()) CompanionPanel("Next step") {
+  Text(event.nextStep, color = EventPaper, fontSize = 14.sp)
+ }
+ val hasContainer = event.namespace.isNotBlank() && event.pod.isNotBlank() && event.container.isNotBlank()
+ val historyKind = when {
+  event.title.contains("throttl", true) -> "throttling"
+  event.title.contains("OOMKilled", true) || event.labels["reason"] == "OOMKilled" -> "container-memory"
+  else -> null
+ }
+ if (hasContainer && historyKind != null) {
+  fun encoded(value: String) = java.net.URLEncoder.encode(value, "UTF-8")
+  MetricHistoryPanel("kind=$historyKind&namespace=${encoded(event.namespace)}&pod=${encoded(event.pod)}&container=${encoded(event.container)}")
  }
  if(event.title.contains("throttl",true))DeskDisclosure("About throttling"){Text("A container can reach its CPU quota without high node CPU usage. The reported percentage counts throttled scheduling periods, not node CPU utilization.",color=EventMuted,fontSize=12.sp)}
  DeskDisclosure("Technical details"){

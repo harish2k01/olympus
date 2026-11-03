@@ -18,13 +18,31 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupProperties
 
-internal object DeskColors {
- val background=Color(0xFF0F1115);val surface=Color(0xFF1A1D24);val raised=Color(0xFF232733)
- val text=Color(0xFFE6E8EE);val muted=Color(0xFFA7ADBB);val blue=Color(0xFF9CCBFF)
- val cobalt=Color(0xFF5268EF);val lilac=Color(0xFFC7BFED);val apricot=Color(0xFFFFB86B);val green=Color(0xFFB5DEC6)
-}
+internal data class DeskPalette(
+ val background: Color, val surface: Color, val raised: Color,
+ val text: Color, val muted: Color, val blue: Color,
+ val cobalt: Color, val lilac: Color, val apricot: Color, val green: Color,
+ val attentionSurface: Color, val onAttention: Color, val selected: Color, val critical: Color, val track: Color
+)
+
+internal val DarkDesk = DeskPalette(
+ Color(0xFF0F1115), Color(0xFF1A1D24), Color(0xFF232733),
+ Color(0xFFE6E8EE), Color(0xFFA7ADBB), Color(0xFF9CCBFF),
+ Color(0xFF5268EF), Color(0xFFC7BFED), Color(0xFFFFB86B), Color(0xFFB5DEC6),
+ Color(0xFF3A2B14), Color(0xFFFFD9A8), Color(0xFF2C3A4F), Color(0xFFFF8A65), Color(0xFF2B3040)
+)
+
+internal val LightDesk = DeskPalette(
+ Color(0xFFF3F5F9), Color.White, Color(0xFFE6EBF3),
+ Color(0xFF14181F), Color(0xFF4F5B6C), Color(0xFF1F5FA6),
+ Color(0xFF1F5FA6), Color(0xFF5A4B8A), Color(0xFFA35C00), Color(0xFF285F4B),
+ Color(0xFFFFE2BD), Color(0xFF4A2E00), Color(0xFFD3E3FA), Color(0xFFB3261E), Color(0xFFD5DCE8)
+)
+
+internal val LocalDeskPalette = staticCompositionLocalOf { DarkDesk }
+internal val DeskColors: DeskPalette @Composable get() = LocalDeskPalette.current
 @Composable internal fun DeskAction(label:String,primary:Boolean=false,enabled:Boolean=true,click:()->Unit){
- Box(Modifier.heightIn(min=40.dp).clip(RoundedCornerShape(11.dp)).background(if(primary)DeskColors.cobalt else DeskColors.raised).clickable(enabled=enabled,onClick=click).padding(horizontal=13.dp),contentAlignment=Alignment.Center){Text(label,color=if(enabled)DeskColors.text else DeskColors.muted.copy(alpha=.5f),fontSize=13.sp,fontWeight=FontWeight.Medium)}
+ Box(Modifier.heightIn(min=44.dp).clip(RoundedCornerShape(22.dp)).background(if(primary)MaterialTheme.colorScheme.primary else DeskColors.raised).clickable(enabled=enabled,onClick=click).padding(horizontal=13.dp),contentAlignment=Alignment.Center){Text(label,color=if(!enabled)DeskColors.muted.copy(alpha=.5f) else if(primary)MaterialTheme.colorScheme.onPrimary else DeskColors.text,fontSize=13.sp,fontWeight=FontWeight.Medium)}
 }
 @Composable internal fun DeskSegments(items:List<String>,selected:String,choose:(String)->Unit,refresh:(()->Unit)?=null){
  Row(Modifier.fillMaxWidth().height(40.dp).horizontalScroll(rememberScrollState()),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(6.dp)){
@@ -53,10 +71,11 @@ internal object DeskColors {
  }
 }}
 
-@Composable internal fun StatusPill(label:String,color:Color=DeskColors.green){
- Row(Modifier.clip(RoundedCornerShape(8.dp)).background(color.copy(alpha=.10f)).padding(horizontal=8.dp,vertical=4.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(5.dp)){
-  Box(Modifier.size(5.dp).background(color,RoundedCornerShape(3.dp)))
-  Text(label,color=color,fontSize=11.sp,maxLines=1)
+@Composable internal fun StatusPill(label:String,color:Color=Color.Unspecified){
+ val tint = if (color == Color.Unspecified) DeskColors.green else color
+ Row(Modifier.clip(RoundedCornerShape(8.dp)).background(tint.copy(alpha=.10f)).padding(horizontal=8.dp,vertical=4.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(5.dp)){
+  Box(Modifier.size(5.dp).background(tint,RoundedCornerShape(3.dp)))
+  Text(label,color=tint,fontSize=11.sp,maxLines=1)
  }
 }
 @Composable internal fun DeskEmpty(title:String,detail:String=""){

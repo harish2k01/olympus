@@ -23,6 +23,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.graphics.PathEffect
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
@@ -45,20 +49,20 @@ import androidx.compose.ui.unit.sp
 import dev.olympus.desk.data.*
 import kotlinx.coroutines.*
 import org.json.JSONObject
-import java.net.URL
+
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.util.UUID
 
-private val Ink=DeskColors.background
-private val Card=DeskColors.surface
-private val Cobalt=Color(0xFF879BFF)
-private val Apricot=Color(0xFFEDB48F)
-private val Lilac=Color(0xFFCDC5FF)
-private val Mint=Color(0xFFB4DFBE)
-private val Muted=Color(0xFFBFC4D1)
-private val Paper=Color(0xFFF5F3EF)
+private val Ink: Color @Composable get() = DeskColors.background
+private val Card: Color @Composable get() = DeskColors.surface
+private val Cobalt: Color @Composable get() = DeskColors.blue
+private val Apricot: Color @Composable get() = DeskColors.apricot
+private val Lilac: Color @Composable get() = DeskColors.lilac
+private val Mint: Color @Composable get() = DeskColors.green
+private val Muted: Color @Composable get() = DeskColors.muted
+private val Paper: Color @Composable get() = DeskColors.text
 private fun Float?.fmt()=if(this==null)"—" else String.format(java.util.Locale.US,"%.1f",this)
 private fun stamp(value:String)=try{DateTimeFormatter.ofPattern("dd MMM · HH:mm:ss").withZone(ZoneId.systemDefault()).format(Instant.parse(value))}catch(_:Exception){"Time unavailable"}
 
@@ -86,15 +90,23 @@ private fun stamp(value:String)=try{DateTimeFormatter.ofPattern("dd MMM · HH:mm
  val compactHeader=!wide&&androidx.compose.ui.platform.LocalDensity.current.fontScale>1.15f
  val prefs=remember{context.getSharedPreferences("home-v3",0)}
  val layoutKey=if(wide)"landscape-v7" else "portrait-v7"
+ val priorDefaultKey = "$layoutKey-before-redesign"
  var gridColumns by remember(wide){mutableIntStateOf(if(wide)prefs.getInt("landscape-columns-v7",8)else 4)}
  var widgets by remember(layoutKey){mutableStateOf(try{prefs.getString(layoutKey,null)?.let{DeskLayout.decode(it)}?:DeskLayout.defaults(wide)}catch(_:Exception){DeskLayout.defaults(wide)})}
+ LaunchedEffect(layoutKey) {
+  val stored = prefs.getString(layoutKey, null)
+  if (stored != null && !prefs.contains(priorDefaultKey) && (!wide || gridColumns == 8) &&
+      DeskLayout.matchesPreviousDefault(widgets, wide)) {
+   widgets = DeskLayout.defaults(wide)
+   prefs.edit().putString(priorDefaultKey, stored).putString(layoutKey, DeskLayout.encode(widgets)).apply()
+  }
+ }
 
  var undoHistory by rememberSaveable(layoutKey){mutableStateOf(arrayListOf<String>())}
  val previousLayout=undoHistory.lastOrNull()?.let{DeskLayout.decode(if(it.startsWith("["))it else JSONObject(it).getString("widgets"))}
  var selectedWidgetId by rememberSaveable{mutableStateOf("")}
  fun save(items:List<DeskWidget>){undoHistory=ArrayList((undoHistory+JSONObject().put("columns",gridColumns).put("widgets",DeskLayout.encode(widgets)).toString()).takeLast(20));widgets=items;prefs.edit().putString(layoutKey,DeskLayout.encode(items)).apply()}
  var tab by rememberSaveable{mutableStateOf("Home")}
- var clusterSection by rememberSaveable{mutableStateOf("Nodes")}
  var servicesSection by rememberSaveable{mutableStateOf("Monitors")}
  var selectedEvent by remember{mutableStateOf<LabEvent?>(null)}
  var detail by rememberSaveable{mutableStateOf("")}
@@ -105,12 +117,19 @@ private fun stamp(value:String)=try{DateTimeFormatter.ofPattern("dd MMM · HH:mm
  var picker by rememberSaveable{mutableStateOf(false)}
  var configuring by remember{mutableStateOf<DeskWidget?>(null)}
  var menu by remember{mutableStateOf(false)}
- var settings by rememberSaveable{mutableStateOf(false)}
+ var settings by rememberSaveable{mutableStateOf(Pairing.read(context) == null)}
  var importLayout by remember{mutableStateOf(false)}
  var message by remember{mutableStateOf("")}
  var dim by remember{mutableFloatStateOf(prefs.getFloat("brightness",.7f))}
  var reducedMotion by remember{mutableStateOf(prefs.getBoolean("reducedMotion",false))}
  var dimMode by remember{mutableStateOf(prefs.getBoolean("deskMode",false))}
+ DisposableEffect(prefs) {
+  val listener = android.content.SharedPreferences.OnSharedPreferenceChangeListener { settings, key ->
+   if (key == "deskMode") dimMode = settings.getBoolean(key, false)
+  }
+  prefs.registerOnSharedPreferenceChangeListener(listener)
+  onDispose { prefs.unregisterOnSharedPreferenceChangeListener(listener) }
+ }
  var keepAwake by remember{mutableStateOf(prefs.getBoolean("keepAwake",true))}
  var showTests by remember{mutableStateOf(prefs.getBoolean("showTests",false))}
  var dockSeconds by remember{mutableIntStateOf(prefs.getInt("dockSeconds",4))}
@@ -123,7 +142,38 @@ private fun stamp(value:String)=try{DateTimeFormatter.ofPattern("dd MMM · HH:mm
  fun pin(kind:String,target:String){if(widgets.none{it.kind==kind&&it.target==target})save(widgets+DeskWidget(UUID.randomUUID().toString(),kind,target));message="Pinned to Home"}
  BackHandler(detail.isNotEmpty()||editing){if(detail.isNotEmpty())backDetail() else editing=false}
  CompositionLocalProvider(LocalReducedMotion provides reducedMotion,LocalShowTests provides showTests,LocalGridGap provides gridGap,LocalGridColumns provides gridColumns){
- Surface(color=Ink,modifier=Modifier.fillMaxSize()){
+ val deskIdleEnabled = wide && dimMode && !editing && !settings && detail.isEmpty() && tab == "Home"
+ var ambient by remember { mutableStateOf(false) }
+ var lastInteraction by remember { mutableLongStateOf(android.os.SystemClock.elapsedRealtime()) }
+ val verdictState = currentVerdict()
+ val incidentKeys = verdictState.incidents.map { "${it.id.ifBlank { it.title }}:${it.kind.lowercase()}" }.toSet()
+ var previousIncidentKeys by remember { mutableStateOf(incidentKeys) }
+ val idleTimeout = prefs.getInt("ambientDelayMinutes", 5).coerceIn(1, 15) * 60_000L
+ LaunchedEffect(deskIdleEnabled, lastInteraction, idleTimeout) {
+  ambient = false
+  if (deskIdleEnabled) {
+   delay(idleTimeout)
+   ambient = true
+  }
+ }
+ LaunchedEffect(incidentKeys) {
+  if (ambient && (incidentKeys - previousIncidentKeys).isNotEmpty()) {
+   lastInteraction = android.os.SystemClock.elapsedRealtime()
+  }
+  previousIncidentKeys = incidentKeys
+ }
+ if (deskIdleEnabled && ambient) {
+  AmbientDesk(verdictState) { lastInteraction = android.os.SystemClock.elapsedRealtime() }
+  return@CompositionLocalProvider
+ }
+ Surface(color=Ink,modifier=Modifier.fillMaxSize().pointerInput(deskIdleEnabled) {
+  if (deskIdleEnabled) awaitPointerEventScope {
+   while (true) {
+    val event = awaitPointerEvent(PointerEventPass.Initial)
+    if (event.changes.any { it.pressed }) lastInteraction = android.os.SystemClock.elapsedRealtime()
+   }
+  }
+ }) {
  Row(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.displayCutout)){
  val destinations = listOf("Home" to "Home", "Cluster" to "Nodes", "Services" to "Apps", "Inbox" to "Events")
  val navigate: (String) -> Unit = {
@@ -139,31 +189,33 @@ private fun stamp(value:String)=try{DateTimeFormatter.ofPattern("dd MMM · HH:mm
   destinations.forEach { (destination, icon) ->
    NavigationRailItem(
     selected=tab==destination,
+    modifier = Modifier.semantics { contentDescription = destination },
     onClick={navigate(destination)},
-    icon={LabGlyph(icon,if(tab==destination)Cobalt else Muted,22.dp)},
+    icon={LabGlyph(icon,if(tab==destination)Cobalt else Muted,22.dp, decorative = true)},
     label={Text(destination,color=if(tab==destination)Paper else Muted)}
    )
   }
  }
  Column(Modifier.weight(1f).fillMaxHeight().padding(horizontal=14.dp).offset(x=if(dimMode)shift.dp else 0.dp)){
   Row(Modifier.fillMaxWidth().height(44.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(8.dp)){
-   if(detail.isNotEmpty())TextButton(onClick={backDetail()},modifier=Modifier.size(40.dp),contentPadding=PaddingValues(0.dp)){LabGlyph("Back",Paper,23.dp)}else Box(Modifier.size(30.dp).clip(RoundedCornerShape(10.dp)).background(Color(0xFF4A63EA)),contentAlignment=Alignment.Center){LabGlyph("Brand",Paper,22.dp)}
-   Text(if(detail.isEmpty())if(tab=="Home")"olympus"else tab else if(detail.startsWith("event:")&&selectedEvent?.id==detail.substringAfter(":"))incidentTitle(selectedEvent!!)else routeTitle(detail),fontSize=18.sp,fontWeight=FontWeight.SemiBold,color=Paper,maxLines=1,overflow=TextOverflow.Ellipsis,modifier=Modifier.widthIn(max=if(wide)350.dp else 145.dp))
-   if(detail.isEmpty()&&!editing)LiveStatus(reducedMotion)
+   if(detail.isNotEmpty())TextButton(onClick={backDetail()},modifier=Modifier.size(40.dp),contentPadding=PaddingValues(0.dp)){LabGlyph("Back",Paper,23.dp)}else Box(Modifier.size(30.dp).clip(RoundedCornerShape(10.dp)).background(Color(0xFF4A63EA)),contentAlignment=Alignment.Center){LabGlyph("Brand",Color.White,22.dp)}
+   Text(if(detail.isEmpty())if(tab=="Home")"olympus"else tab else if(detail.startsWith("event:")&&selectedEvent?.id==detail.substringAfter(":"))incidentTitle(selectedEvent!!)else routeTitle(detail),fontSize=18.sp,fontWeight=FontWeight.SemiBold,color=Paper,maxLines=1,overflow=TextOverflow.Ellipsis,modifier=Modifier.widthIn(max=if(wide)350.dp else if(compactHeader)112.dp else 125.dp))
+   if(detail.isEmpty()&&!editing)LiveStatus()
    Spacer(Modifier.weight(1f))
 
    if(detail.startsWith("node:")||detail.startsWith("app:"))TextButton(onClick={pin(if(detail.startsWith("node:"))"Node"else"App",detail.substringAfter(":"))}){Text("Pin",color=Cobalt)}
-   if(editing){if(previousLayout!=null)TextButton(onClick={val old=previousLayout;val entry=undoHistory.lastOrNull();if(entry!=null&&!entry.startsWith("[")){gridColumns=JSONObject(entry).optInt("columns",gridColumns);if(wide)prefs.edit().putInt("landscape-columns-v7",gridColumns).apply()};undoHistory=ArrayList(undoHistory.dropLast(1));if(old!=null){widgets=old;prefs.edit().putString(layoutKey,DeskLayout.encode(old)).apply()}}){Text("Undo",color=Cobalt)};TextButton(onClick={picker=true}){Text("+ Widget",color=Cobalt)};TextButton(onClick={editing=false}){Text("Done",color=Mint)}}
-   else Row{if(detail.isEmpty()&&tab=="Home"&&!compactHeader)IconButton(onClick={if(tab!="Home"||detail.isNotBlank()){tab="Home";detail=""};editing=!editing},modifier=Modifier.size(38.dp)){LabGlyph("Edit",Muted,20.dp)};if(detail.isEmpty()&&!compactHeader)IconButton(onClick={settings=true},modifier=Modifier.size(38.dp)){LabGlyph("Settings",Muted,21.dp)};Box{
-    IconButton(onClick={menu=true},modifier=Modifier.size(38.dp)){Text("•••",color=Muted)}
+   if(editing){if(previousLayout!=null)TextButton(onClick={val old=previousLayout;val entry=undoHistory.lastOrNull();if(entry!=null&&!entry.startsWith("[")){gridColumns=JSONObject(entry).optInt("columns",gridColumns);if(wide)prefs.edit().putInt("landscape-columns-v7",gridColumns).apply()};undoHistory=ArrayList(undoHistory.dropLast(1));widgets=old;prefs.edit().putString(layoutKey,DeskLayout.encode(old)).apply()}){Text("Undo",color=Cobalt)};TextButton(onClick={picker=true}){Text("+ Widget",color=Cobalt)};TextButton(onClick={editing=false}){Text("Done",color=Mint)}}
+   else Row{if(detail.isEmpty()&&tab=="Home"&&!compactHeader)IconButton(onClick={editing=true},modifier=Modifier.size(44.dp)){LabGlyph("Edit",Muted,20.dp)};if(detail.isEmpty())IconButton(onClick={settings=true},modifier=Modifier.size(44.dp)){LabGlyph("Settings",Muted,21.dp)};Box{
+    IconButton(onClick={menu=true},modifier=Modifier.size(44.dp).semantics { contentDescription = "More options" }){Text("•••",color=Muted)}
     DeskPopup(menu,{menu=false},if(detail.isNotBlank())listOf("Copy reference" to {(context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager).setPrimaryClip(ClipData.newPlainText("Olympus resource",detail));message="Reference copied"})else listOf(
      "Edit Home" to {tab="Home";detail="";editing=true},
      "Add widget" to {tab="Home";detail="";picker=true},
      "Export layout" to {(context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager).setPrimaryClip(ClipData.newPlainText("Olympus layout",DeskLayout.encode(widgets)));message="Layout copied"},
      "Import layout" to {importLayout=true},
-     "Restore previous layout" to {val old=prefs.getString(if(wide)"landscape-v6"else"portrait-v6",null);if(old!=null)try{save(DeskLayout.decode(old));gridColumns=if(wide)6 else 4;if(wide)prefs.edit().putInt("landscape-columns-v7",6).apply();message="Previous layout restored"}catch(_:Exception){message="Previous layout unavailable"}else message="No previous layout"},"Settings" to {settings=true}))
+     "Restore previous layout" to {val previousDefault = prefs.getString(priorDefaultKey, null); val old=previousDefault ?: prefs.getString(if(wide)"landscape-v6"else"portrait-v6",null);if(old!=null)try{save(DeskLayout.decode(old));gridColumns=if(!wide)4 else if(previousDefault!=null)8 else 6;if(wide)prefs.edit().putInt("landscape-columns-v7",gridColumns).apply();message="Previous layout restored"}catch(_:Exception){message="Previous layout unavailable"}else message="No previous layout"},"Settings" to {settings=true}))
    }}
   }
+  if (tab == "Home" && detail.isEmpty() && !editing) HomeSourceStatus()
   if(message.isNotEmpty()){Text(message,color=Mint,fontSize=12.sp);LaunchedEffect(message){delay(2200);message=""}}
   BoxWithConstraints(Modifier.weight(1f)){val viewport=maxHeight
   AnimatedContent(targetState=if(wide&&tab=="Inbox"&&detail.startsWith("event:"))"Inbox" else detail.ifEmpty{tab},modifier=Modifier.fillMaxSize(),transitionSpec={if(reducedMotion)EnterTransition.None togetherWith ExitTransition.None else fadeIn(tween(180)) togetherWith fadeOut(tween(120))},label="page"){page->
@@ -182,6 +234,10 @@ private fun stamp(value:String)=try{DateTimeFormatter.ofPattern("dd MMM · HH:mm
     }
    }else Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(bottom=8.dp)){
     when{
+     page.startsWith("cluster-history:") -> {
+      val metric = page.substringAfter(":").substringBefore("@")
+      MetricHistoryPanel("kind=cluster-$metric", initialRange = page.substringAfter("@", "1h"))
+     }
      page.startsWith("events-history:")->NotificationInbox(page.substringAfter(":"),"History",true){selectedEvent=it;detail="event:${it.id}"}
      page.startsWith("events-source:")->NotificationInbox(page.substringAfter(":")){selectedEvent=it;detail="event:${it.id}"}
      page.startsWith("pod:")->WorkloadScreen(page.removePrefix("pod:")){target->detailHistory=ArrayList(detailHistory+detail);detail=target}
@@ -192,8 +248,18 @@ private fun stamp(value:String)=try{DateTimeFormatter.ofPattern("dd MMM · HH:mm
      page.startsWith("event:")->EventRoute(page.substringAfter(":"),selectedEvent,{selectedEvent=it}){target->detailHistory=ArrayList(detailHistory+detail);detail=target}
      page=="Attention"->{Title("Needs attention");if(LiveRepository.issues.isEmpty())Text("No current issues",color=Mint);LiveRepository.issues.forEach{item->Column(Modifier.fillMaxWidth().padding(bottom=10.dp).clip(RoundedCornerShape(16.dp)).background(Card).clickable{detail=item.target}.padding(16.dp)){Text(item.title,color=Paper,fontSize=14.sp);Text(item.severity,color=Apricot,fontSize=11.sp)}}}
      page=="Backups"-> {Title("Backups");Info("Destination",when(LiveRepository.backup){true->"Available";false->"Unavailable";null->"Unknown"});Info("Volumes with backup records",if(LiveRepository.backupVolumes==null)"Unavailable"else"${LiveRepository.backupRecorded} / ${LiveRepository.backupVolumes}");Info("Last recorded backup",LiveRepository.backupLast.ifEmpty{"None recorded"})}
-     page=="Cluster"->{CompactTabs(listOf("Nodes","Applications"),clusterSection,{clusterSection=it});if(clusterSection=="Nodes")Nodes{detail="node:$it"}else Apps{detail="app:$it"}}
-     page=="Services"->{CompactTabs(listOf("Monitors","Integrations"),servicesSection,{servicesSection=it});if(servicesSection=="Monitors")MonitorScreen{detail="monitor:$it"}else IntegrationDirectory{detail="integration:$it"}}
+     page=="Cluster"->{
+      ClusterMetricOverview { metric, range -> detail = "cluster-history:$metric@$range" }
+      DashboardActions()
+      if (wide) Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+       Column(Modifier.weight(1f)) { ClusterNodeOverview { detail = "node:$it" } }
+       Column(Modifier.weight(1f)) { ClusterAppOverview({ detail = "app:$it" }, { detail = "Apps" }) }
+      } else {
+       ClusterNodeOverview { detail = "node:$it" }
+       ClusterAppOverview({ detail = "app:$it" }, { detail = "Apps" })
+      }
+     }
+     page=="Services"->{CompactTabs(listOf("Monitors","Apps"),if (servicesSection == "Monitors") "Monitors" else "Apps",{servicesSection=it});if(servicesSection=="Monitors")MonitorScreen{detail="monitor:$it"}else IntegrationDirectory{detail="integration:$it"}}
      page=="Inbox"->NotificationInbox{selectedEvent=it;detail="event:${it.id}"}
      page=="Nodes"->Nodes{detail="node:$it"}
      page=="Events"->NotificationInbox{selectedEvent=it;detail="event:${it.id}"}
@@ -207,12 +273,17 @@ private fun stamp(value:String)=try{DateTimeFormatter.ofPattern("dd MMM · HH:mm
        detailHistory=arrayListOf()
       }
       val selected=widgets.find{it.id==selectedWidgetId}?:widgets.firstOrNull()
-      @Composable fun canvas(){WidgetGrid(widgets,wide,editing,selected?.id.orEmpty(),reducedMotion,(viewport-12.dp).coerceAtLeast(0.dp),wide&&!editing,{editing=true},::save,{destination->when(destination){"Nodes","Apps"->{tab="Cluster";clusterSection=if(destination=="Nodes")"Nodes"else"Applications"};"Monitors"->{tab="Services";servicesSection="Monitors"};"Events","Attention"->tab="Inbox";else->detail=destination}},{selectedWidgetId=it.id})}
+      @Composable fun canvas() {
+       val cached = LiveRepository.time.isNotBlank() && !LiveRepository.state.startsWith("Live")
+       Column(Modifier.alpha(if (cached && !editing) .65f else 1f)) {
+        WidgetGrid(widgets,wide,editing,selected?.id.orEmpty(),reducedMotion,(viewport-12.dp).coerceAtLeast(0.dp),wide&&!editing,{editing=true},::save,{destination->when(destination){"Nodes","Apps"->{tab="Cluster";detail=destination};"Monitors"->{tab="Services";servicesSection="Monitors"};"Events","Attention"->tab="Inbox";else->detail=destination}},{selectedWidgetId=it.id})
+       }
+      }
       if(!editing&&wide) Row(
        Modifier.fillMaxWidth(), horizontalArrangement=Arrangement.spacedBy(8.dp)
       ){
-       HomeVerdict(openIncident,Modifier.weight(1f).heightIn(min=180.dp))
-       Box(Modifier.weight(3f)){canvas()}
+       HomeVerdict(openIncident, Modifier.weight(1.5f).heightIn(min = (viewport - 12.dp).coerceAtLeast(180.dp)), tall = true)
+       Box(Modifier.weight(3.1f)){canvas()}
       }
       else if(editing&&wide)Row(horizontalArrangement=Arrangement.spacedBy(16.dp)){
        Box(Modifier.weight(1f)){canvas()}
@@ -229,8 +300,9 @@ private fun stamp(value:String)=try{DateTimeFormatter.ofPattern("dd MMM · HH:mm
   destinations.forEach { (destination, icon) ->
    NavigationBarItem(
     selected=tab==destination,
+    modifier = Modifier.semantics { contentDescription = destination },
     onClick={navigate(destination)},
-    icon={LabGlyph(icon,if(tab==destination)Cobalt else Muted,22.dp)},
+    icon={LabGlyph(icon,if(tab==destination)Cobalt else Muted,22.dp, decorative = true)},
     label={Text(destination,color=if(tab==destination)Paper else Muted)}
    )
   }
@@ -254,35 +326,36 @@ private fun stamp(value:String)=try{DateTimeFormatter.ofPattern("dd MMM · HH:mm
 
 }
 
-@Composable private fun HomeVerdict(open: (LabEvent) -> Unit, modifier: Modifier = Modifier.fillMaxWidth()) {
+@Composable private fun HomeVerdict(open: (LabEvent) -> Unit, modifier: Modifier = Modifier.fillMaxWidth(), tall: Boolean = false) {
  val state = LiveRepository.state
  val connected = state.startsWith("Live")
- val firing = if (connected) LiveRepository.active
-  .filter { it.state == "Firing" }
-  .distinctBy { it.id }
-  .sortedByDescending { it.kind.equals("critical", ignoreCase = true) }
- else emptyList()
+ val result = currentVerdict()
+ val verdict = result.verdict
+ val firing = result.incidents
  val incident = firing.firstOrNull()
- val verified = state == "Live" && LiveRepository.signals.isNotEmpty() && LiveRepository.signals.values.all { it } && LiveRepository.active.none { it.state == "Unknown" }
- val headline = when {
-  incident?.kind.equals("critical", ignoreCase = true) -> "Critical"
-  incident != null -> "Needs you"
-  verified -> "All calm"
-  else -> "Can’t confirm"
- }
+ val verified = state == "Live" && LiveRepository.signals.isNotEmpty() &&
+  LiveRepository.signals.values.all { it } && LiveRepository.active.none { it.state == "Unknown" }
+ val watching = LiveRepository.active.count { it.state == "Pending" }
  val summary = when {
-  incident != null -> "${firing.size} firing • ${incidentTitle(incident)}"
-  verified -> "No firing incidents"
+  incident != null -> if (firing.size == 1) "1 firing incident" else "${firing.size} firing incidents"
+  verdict == Verdict.Calm && watching > 0 -> "$watching pending · watching"
+  verdict == Verdict.Calm -> "No firing incidents"
+  connected -> "Waiting for fresh source data"
   else -> state
  }
- val accent = if (incident != null) Apricot else if (verified) Cobalt else Muted
+ val accent = verdict.accent
  Column(
   modifier.padding(bottom=8.dp).clip(RoundedCornerShape(24.dp))
-   .background(if(incident!=null) Color(0xFF3A2B14) else Card).padding(16.dp),
-  verticalArrangement=Arrangement.spacedBy(6.dp)
+   .background(if(incident!=null) DeskColors.attentionSurface else Card).padding(16.dp),
+  verticalArrangement = if (tall) Arrangement.SpaceBetween else Arrangement.spacedBy(6.dp)
  ) {
   Column {
-   Text(headline, color=accent, fontSize=26.sp, fontWeight=FontWeight.Bold)
+   Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+    VerdictMark(verdict)
+    Text(if (incident == null) "HOMELAB VERDICT" else verdict.label.uppercase(java.util.Locale.ROOT), color = if (incident == null) accent else DeskColors.onAttention, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = .6.sp)
+   }
+   Text(incident?.let(::incidentTitle) ?: verdict.label, color = if (incident == null) accent else Paper,
+    fontSize = 34.sp, lineHeight = 37.sp, fontWeight = FontWeight.Bold, maxLines = 3, overflow = TextOverflow.Ellipsis)
    Text(summary, color=Paper, fontSize=13.sp, maxLines=2, overflow=TextOverflow.Ellipsis)
    if (incident != null && !verified) Text("Partial data", color=Muted, fontSize=12.sp)
    if (!connected && LiveRepository.time.isNotBlank()) {
@@ -293,8 +366,14 @@ private fun stamp(value:String)=try{DateTimeFormatter.ofPattern("dd MMM · HH:mm
     if (unavailable.isNotEmpty()) Text(unavailable.joinToString(", ", postfix=" unavailable"), color=Muted, fontSize=12.sp)
    }
   }
-  if (incident != null) TextButton(onClick={open(incident)}, modifier=Modifier.heightIn(min=44.dp)) {
-   Text("View incident", color=accent)
+  if (incident != null) {
+   Button(
+    onClick = { open(incident) },
+    modifier = Modifier.heightIn(min = 44.dp),
+    shape = RoundedCornerShape(22.dp),
+    colors = ButtonDefaults.buttonColors(containerColor = accent,
+     contentColor = if (DeskColors == DarkDesk) Color(0xFF2B1A00) else Color.White)
+   ) { Text("View incident") }
   } else if (!connected && state != "Not paired") {
    TextButton(onClick=LiveRepository::retryNow, modifier=Modifier.heightIn(min=44.dp)) {
     Text("Retry now", color=Cobalt)
@@ -303,16 +382,84 @@ private fun stamp(value:String)=try{DateTimeFormatter.ofPattern("dd MMM · HH:mm
  }
 }
 
-@Composable private fun LiveStatus(reduced:Boolean){
- val live=LiveRepository.state.startsWith("Live")
- val healthy=live&&!LiveRepository.state.contains("Partial")
- val transition=rememberInfiniteTransition(label="connection")
- val pulse by transition.animateFloat(.45f,1f,infiniteRepeatable(tween(1200),RepeatMode.Reverse),label="pulse")
- Row(verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(5.dp)){
-  Box(Modifier.size(6.dp).alpha(if(live&&!reduced)pulse else 1f).background(if(healthy)Mint else Apricot,RoundedCornerShape(6.dp)))
-  Text(when{LiveRepository.state.contains("Partial")->"Partial";live->"Live";LiveRepository.state=="Stale"->"Stale";else->"Offline"},color=if(healthy)Mint else Apricot,fontSize=11.sp)
+@Composable private fun LiveStatus() {
+ val state = LiveRepository.state
+ val connected = state.startsWith("Live")
+ val age = snapshotAge()
+ val label = when {
+  connected && age != null -> "Live · $age"
+  connected -> "Live"
+  else -> state
+ }
+ Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+  VerdictMark(if (connected) Verdict.Calm else Verdict.Unknown)
+  Text(label, color = if (connected) Cobalt else Muted, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.widthIn(max = 104.dp))
  }
 }
+
+private fun snapshotAge(): String? {
+ val stamp = runCatching { Instant.parse(LiveRepository.time) }.getOrNull() ?: return null
+ val seconds = (Instant.now().epochSecond - stamp.epochSecond).coerceAtLeast(0)
+ return if (seconds < 60) "$seconds s" else "${seconds / 60} min"
+}
+
+@Composable private fun HomeSourceStatus() {
+ if (!LiveRepository.state.startsWith("Live")) return
+ val now = Instant.now()
+ val stale = LiveRepository.observedAt.mapNotNull { (source, stamp) ->
+  val age = observationAgeSeconds(stamp, now)
+  if (age != null && classifyFreshness(age) == Freshness.Stale) "$source · ${formatObservationAge(age)} old" else null
+ }
+ val unavailable = stale + LiveRepository.signals.filterValues { !it }.keys.map { "$it unavailable" } +
+  LiveRepository.integrations.filter { it.error.isNotBlank() }.map { "${it.name} integration degraded" }
+ if (unavailable.isEmpty()) return
+ Row(
+  Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(bottom = 6.dp),
+  horizontalArrangement = Arrangement.spacedBy(6.dp)
+ ) {
+  unavailable.forEach { source ->
+   Row(
+    Modifier.clip(RoundedCornerShape(16.dp)).background(DeskColors.raised).padding(horizontal = 8.dp, vertical = 4.dp),
+    horizontalArrangement = Arrangement.spacedBy(5.dp),
+    verticalAlignment = Alignment.CenterVertically
+   ) {
+    VerdictMark(Verdict.Unknown)
+    Text(source, color = Muted, fontSize = 11.sp)
+   }
+  }
+ }
+}
+
+private fun sourceForWidget(kind: String): String? = when (kind) {
+ "CPU", "Memory" -> kind
+ "Nodes", "Node" -> "Nodes"
+ "Monitors" -> "Uptime Kuma"
+ "GitOps", "App" -> "Argo CD"
+ else -> null
+}
+
+private fun sourceAge(kind: String): Long? =
+ sourceForWidget(kind)?.let { source -> LiveRepository.observedAt[source] }
+  ?.let { observationAgeSeconds(it, Instant.now()) }
+
+private fun widgetUnavailable(kind: String): Boolean = when (kind) {
+ "CPU" -> LiveRepository.cpuPercent == null
+ "Memory" -> LiveRepository.memoryPercent == null
+ "Nodes", "Node" -> LiveRepository.signals["Nodes"] == false
+ "Monitors" -> LiveRepository.signals["Uptime Kuma"] == false
+ "GitOps", "App" -> LiveRepository.signals["Argo CD"] == false
+ else -> false
+}
+
+private fun Modifier.unavailableOutline(color: Color) = drawWithContent {
+ drawContent()
+ drawRoundRect(
+  color = color,
+  cornerRadius = CornerRadius(20.dp.toPx()),
+  style = Stroke(1.dp.toPx(), pathEffect = PathEffect.dashPathEffect(floatArrayOf(5.dp.toPx(), 4.dp.toPx())))
+ )
+}
+
 @Composable private fun WidgetGrid(items:List<DeskWidget>,wide:Boolean,editing:Boolean,selectedId:String,reducedMotion:Boolean,viewport:androidx.compose.ui.unit.Dp,fillViewport:Boolean,edit:()->Unit,save:(List<DeskWidget>)->Unit,open:(String)->Unit,configure:(DeskWidget)->Unit){
  val columns=LocalGridColumns.current
  val latest by rememberUpdatedState(items)
@@ -322,30 +469,56 @@ private fun stamp(value:String)=try{DateTimeFormatter.ofPattern("dd MMM · HH:mm
  val gapDp=LocalGridGap.current.dp
  val rows=cells.maxOfOrNull{it.row+it.height}?:0
  val statusStrip=wide&&columns==8&&rows==3&&cells.any{it.row==2}&&cells.filter{it.row<2}.all{it.row+it.height<=2}&&cells.filter{it.row==2}.all{it.widget.kind in listOf("Nodes","Monitors","Events")&&it.height==1}
- val stripHeight=78.dp
- val unit=if(statusStrip)((viewport-gapDp*2-stripHeight)/2).coerceAtLeast(76.dp)else deskRowHeight(viewport.value,gapDp.value,rows,wide,fillViewport).dp
+ val fontScale = androidx.compose.ui.platform.LocalDensity.current.fontScale
+ val accessibilityScale = 1f + ((fontScale - 1f).coerceAtLeast(0f) * .5f)
+ val stripHeight=78.dp * accessibilityScale
+ val portraitDefault = !wide && items == DeskLayout.defaults(false)
+ val unit = if (statusStrip) ((viewport - gapDp * 2 - stripHeight) / 2).coerceAtLeast(76.dp * accessibilityScale)
+  else deskRowHeight(viewport.value, gapDp.value, rows, wide, fillViewport).dp * accessibilityScale
  if(items.isEmpty())DeskAction("Add widget",true){edit()}
  Layout(content={cells.forEach{cell->val widget=cell.widget
+  val unavailable = !editing && (widgetUnavailable(widget.kind) || classifyFreshness(sourceAge(widget.kind)) == Freshness.Stale || LiveRepository.state == "Stale")
+  val staleBorder = Muted
   var delta by remember(widget.id){mutableStateOf(Offset.Zero)}
-  Box(Modifier.zIndex(if(delta!=Offset.Zero)1f else 0f).graphicsLayer{translationX=delta.x;translationY=delta.y}.pointerInput(widget.id,columns,cell.column,cell.row){detectDragGesturesAfterLongPress(onDragStart={edit();configure(widget);delta=Offset.Zero},onDrag={change,amount->change.consume();delta+=amount},onDragEnd={save(DeskLayout.move(latest,widget.id,cell.column+kotlin.math.round(delta.x/pitchX).toInt(),cell.row+kotlin.math.round(delta.y/pitchY).toInt(),columns));delta=Offset.Zero},onDragCancel={delta=Offset.Zero})}.then(if(editing&&widget.id==selectedId)Modifier.border(2.dp,Cobalt.copy(alpha=.85f),RoundedCornerShape(20.dp))else Modifier).clip(RoundedCornerShape(20.dp)).background(widgetColor(widget.kind)).clickable(enabled=editing||widget.kind!="Clock"){if(editing)configure(widget)else open(if(widget.kind=="Attention")LiveRepository.issues.firstOrNull()?.target?:"Events"else destination(widget))}.padding(12.dp)){
+  Box(Modifier.zIndex(if(delta!=Offset.Zero)1f else 0f).graphicsLayer{translationX=delta.x;translationY=delta.y}.pointerInput(widget.id,columns,cell.column,cell.row){detectDragGesturesAfterLongPress(onDragStart={edit();configure(widget);delta=Offset.Zero},onDrag={change,amount->change.consume();delta+=amount},onDragEnd={save(DeskLayout.move(latest,widget.id,cell.column+kotlin.math.round(delta.x/pitchX).toInt(),cell.row+kotlin.math.round(delta.y/pitchY).toInt(),columns));delta=Offset.Zero},onDragCancel={delta=Offset.Zero})}.then(if(editing&&widget.id==selectedId)Modifier.border(2.dp,Cobalt.copy(alpha=.85f),RoundedCornerShape(20.dp))else Modifier).clip(RoundedCornerShape(20.dp)).background(widgetColor(widget.kind)).then(if (unavailable) Modifier.unavailableOutline(staleBorder).alpha(.75f) else Modifier).clickable(enabled=editing||widget.kind!="Clock"){if(editing)configure(widget)else open(if(widget.kind=="Attention")LiveRepository.issues.firstOrNull()?.target?:"Events"else destination(widget))}.padding(12.dp)){
    WidgetBody(widget,Modifier.fillMaxSize())
    if(editing&&widget.id==selectedId){
     @Composable fun handle(horizontal:Boolean){
-     Box(Modifier.align(if(horizontal)Alignment.CenterEnd else Alignment.BottomCenter).offset(x=if(horizontal)20.dp else 0.dp,y=if(horizontal)0.dp else 20.dp).size(if(horizontal)24.dp else 48.dp,if(horizontal)48.dp else 24.dp).pointerInput(widget.id,cell.width,cell.height,horizontal){var amount=0f;detectDragGestures(onDragStart={amount=0f},onDrag={change,d->change.consume();amount+=if(horizontal)d.x else d.y},onDragEnd={val steps=kotlin.math.round(amount/if(horizontal)pitchX else pitchY).toInt();save(DeskLayout.resize(latest,widget.id,cell.width+if(horizontal)steps else 0,cell.height+if(horizontal)0 else steps,columns))})},contentAlignment=Alignment.Center){Box(Modifier.size(if(horizontal)4.dp else 26.dp,if(horizontal)26.dp else 4.dp).background(Cobalt,RoundedCornerShape(4.dp)))}
+     Box(Modifier.align(if(horizontal)Alignment.CenterEnd else Alignment.BottomCenter).size(48.dp).semantics { contentDescription = if (horizontal) "Resize width" else "Resize height" }.pointerInput(widget.id,cell.width,cell.height,horizontal){var amount=0f;detectDragGestures(onDragStart={amount=0f},onDrag={change,d->change.consume();amount+=if(horizontal)d.x else d.y},onDragEnd={val steps=kotlin.math.round(amount/if(horizontal)pitchX else pitchY).toInt();save(DeskLayout.resize(latest,widget.id,cell.width+if(horizontal)steps else 0,cell.height+if(horizontal)0 else steps,columns))})},contentAlignment=if(horizontal) Alignment.CenterEnd else Alignment.BottomCenter){Box(Modifier.size(if(horizontal)4.dp else 26.dp,if(horizontal)26.dp else 4.dp).background(Cobalt,RoundedCornerShape(4.dp)))}
     }
     handle(true);handle(false)
    }
   }
  }},modifier=Modifier.fillMaxWidth()){measurables,constraints->
-  val gap=gapDp.roundToPx();val cellWidth=(constraints.maxWidth-gap*(columns-1))/columns;val rowHeight=unit.roundToPx()
-  pitchX=(cellWidth+gap).toFloat();pitchY=(rowHeight+gap).toFloat()
-  val placeables=measurables.mapIndexed{index,m->val c=cells[index];m.measure(Constraints.fixed(cellWidth*c.width+gap*(c.width-1),(if(statusStrip&&c.row==2)stripHeight.roundToPx()else rowHeight*c.height+gap*(c.height-1))))}
-  val rows=cells.maxOfOrNull{it.row+it.height}?:0
-  layout(constraints.maxWidth,(if(statusStrip)2*rowHeight+stripHeight.roundToPx()+gap*2 else rows*rowHeight+gap*(rows-1)).coerceAtLeast(0)){placeables.forEachIndexed{i,p->val c=cells[i];p.placeRelative(c.column*(cellWidth+gap),c.row*(rowHeight+gap))}}
+  val gap = gapDp.roundToPx()
+  val cellWidth = (constraints.maxWidth - gap * (columns - 1)) / columns
+  val portraitRows = listOf(150.dp, 114.dp, 114.dp, 106.dp)
+  val rowSizes = List(rows) { index ->
+   when {
+    portraitDefault -> (portraitRows[index] * accessibilityScale).roundToPx()
+    statusStrip && index == 2 -> stripHeight.roundToPx()
+    else -> unit.roundToPx()
+   }
+  }
+  val offsets = rowSizes.runningFold(0) { offset, height -> offset + height + gap }
+  pitchX = (cellWidth + gap).toFloat()
+  pitchY = if (rows == 0) unit.toPx() + gap else offsets.last().toFloat() / rows
+  val placeables = measurables.mapIndexed { index, measurable ->
+   val cell = cells[index]
+   val width = cellWidth * cell.width + gap * (cell.width - 1)
+   val height = offsets[cell.row + cell.height] - offsets[cell.row] - gap
+   measurable.measure(Constraints.fixed(width, height))
+  }
+  layout(constraints.maxWidth, (offsets.last() - gap).coerceAtLeast(0)) {
+   placeables.forEachIndexed { index, placeable ->
+    val cell = cells[index]
+    placeable.placeRelative(cell.column * (cellWidth + gap), offsets[cell.row])
+   }
+  }
  }
 }
 
-internal fun destination(w:DeskWidget)=when(w.kind){"Clock"->"Home";"Monitors"->"Monitors";"Node"->"node:${w.target}";"App","Service"->"app:${w.target}";"Backups"->"Backups";"Events"->"events-history:${w.target.ifBlank{"All"}}";"Alerts"->if(w.target.isBlank()||w.target=="All")"Events"else"events-source:${w.target}";"Attention"->"Attention";"GitOps"->"Apps";"Downloads"->"app:qbittorrent";else->"Nodes"}
+internal fun destination(w:DeskWidget)=when(w.kind){"CPU"->"cluster-history:cpu@${w.historyRange}";"Memory"->"cluster-history:memory@${w.historyRange}";"Clock"->"Home";"Monitors"->"Monitors";"Node"->"node:${w.target}";"App","Service"->"app:${w.target}";"Backups"->"Backups";"Events"->"events-history:${w.target.ifBlank{"All"}}";"Alerts"->if(w.target.isBlank()||w.target=="All")"Events"else"events-source:${w.target}";"Attention"->"Attention";"GitOps"->"Apps";"Downloads"->"app:qbittorrent";else->"Nodes"}
 @Composable private fun WidgetBody(w:DeskWidget,modifier:Modifier){if(w.kind=="Clock"){ClockWidget(w.height,modifier,w.label);return};if(w.kind in listOf("CPU","Memory")){MetricWidget(w,modifier);return};if(w.kind in listOf("Attention","GitOps","Nodes","Monitors","Events")){SummaryWidget(w,modifier);return};val fg=if(w.kind in listOf("GitOps","Attention","Monitors"))Color(0xFF29233D)else Paper;val secondary=if(fg!=Paper)fg.copy(alpha=.8f)else Muted;Column(modifier.fillMaxWidth(),verticalArrangement=Arrangement.spacedBy(3.dp)){
  val app=LiveRepository.services.find{it.name==w.target};val node=LiveRepository.nodes.find{it.name==w.target}
  Row(verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(8.dp)){if(w.kind=="App"&&w.width>=2)AppIcon(app?.icon?:"",w.target);Text(w.label.ifBlank{if(w.kind in listOf("App","Node","Service"))w.target else when(w.kind){"Events"->"Recent activity";"Alerts"->"Active alerts";"Attention"->"Needs attention";else->w.kind}},color=secondary,fontSize=if(w.width<2)10.sp else 12.sp,maxLines=1,overflow=TextOverflow.Ellipsis,modifier=Modifier.weight(1f));if(w.kind=="GitOps")LabGlyph("GitOps",fg,19.dp)}
@@ -380,12 +553,13 @@ internal fun destination(w:DeskWidget)=when(w.kind){"Clock"->"Home";"Monitors"->
 @Composable private fun WidgetPicker(initial:DeskWidget?=null,onDismiss:()->Unit,add:(DeskWidget)->Unit){
  var kind by remember{mutableStateOf(initial?.kind?:"CPU")};var target by remember{mutableStateOf(initial?.target?:"")}
  var width by remember{mutableIntStateOf(initial?.width?:2)};var height by remember{mutableIntStateOf(initial?.height?:1)}
+ var historyRange by remember { mutableStateOf(initial?.historyRange ?: "1h") }
  var label by remember{mutableStateOf(initial?.label?:"")};var fields by remember{mutableStateOf(initial?.fields?:emptyList())}
  var category by remember{mutableStateOf("All")};var gallerySearch by remember{mutableStateOf("")};var configuring by remember{mutableStateOf(initial!=null)};var sourceOpen by remember{mutableStateOf(false)};var search by remember{mutableStateOf("")}
  val wide=wideWindow();val columns=LocalGridColumns.current
  val targets=when(kind){"Service"->LiveRepository.integrations.map{it.name};"App"->LiveRepository.services.map{it.name};"Node"->LiveRepository.nodes.map{it.name};"Events","Alerts"->listOf("All")+(LiveRepository.active+LiveRepository.events).map{it.source}.distinct();else->emptyList()}
  LaunchedEffect(kind,targets){if(targets.isNotEmpty()&&target !in targets)target=targets.first()}
- val preview=DeskWidget(initial?.id?:"preview",kind,target,width,height,label,fields,initial?.x?:-1,initial?.y?:-1)
+ val preview=DeskWidget(initial?.id?:"preview",kind,target,width,height,label,fields,initial?.x?:-1,initial?.y?:-1,historyRange)
  @Composable fun previewPanel(){Column(verticalArrangement=Arrangement.spacedBy(10.dp)){
   Text("PREVIEW",color=Muted,fontSize=10.sp)
   Box(Modifier.fillMaxWidth().clip(RoundedCornerShape(20.dp)).background(DeskColors.raised.copy(alpha=.35f)).padding(14.dp),contentAlignment=Alignment.Center){
@@ -404,6 +578,10 @@ internal fun destination(w:DeskWidget)=when(w.kind){"Clock"->"Home";"Monitors"->
    Text(if(kind in listOf("Events","Alerts"))"SOURCE"else if(kind=="Node")"NODE"else"APPLICATION",color=Muted,fontSize=10.sp)
    Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(Card).clickable{sourceOpen=!sourceOpen}.padding(12.dp),verticalAlignment=Alignment.CenterVertically){Text(target,color=Paper,fontSize=13.sp,modifier=Modifier.weight(1f));Text(if(sourceOpen)"⌃"else"⌄",color=Muted)}
    if(sourceOpen){DeskSearch(search,{search=it},"Search");Column(Modifier.heightIn(max=160.dp).verticalScroll(rememberScrollState())){targets.filter{it.contains(search,true)}.forEach{t->Row(Modifier.fillMaxWidth().clickable{target=t;fields=emptyList();sourceOpen=false;search=""}.padding(10.dp)){Text(t,color=if(target==t)Cobalt else Paper,fontSize=13.sp)}}}}
+  }
+  if (kind == "CPU" || kind == "Memory") {
+   Text("CHART HISTORY RANGE", color = Muted, fontSize = 10.sp)
+   DeskSegments(DeskLayout.historyRanges, historyRange, { historyRange = it })
   }
   if(kind=="Service"){
    val available=LiveRepository.integrations.find{it.name==target}?.fields?.keys?.toList()?:emptyList()
@@ -445,14 +623,14 @@ internal fun destination(w:DeskWidget)=when(w.kind){"Clock"->"Home";"Monitors"->
   }
  }
 }
-internal fun welcomeColor():Color = DeskColors.cobalt
-private fun attentionActive()=LiveRepository.issues.isNotEmpty()
-private fun widgetColor(kind:String)=when(kind){"Clock"->welcomeColor();"GitOps"->DeskColors.lilac;"Attention"->if(attentionActive())DeskColors.apricot else Card;else->Card}
+internal fun welcomeColor():Color = DarkDesk.cobalt
+private fun attentionActive() = currentVerdict().incidents.isNotEmpty()
+@Composable private fun widgetColor(kind:String)=when(kind){"Clock"->welcomeColor();"GitOps"->DeskColors.selected;"Attention"->if(attentionActive())DeskColors.attentionSurface else Card;else->Card}
 @Composable internal fun Spark(values:List<Float>,color:Color,percent:Boolean=false){if(values.size<2){Text("Collecting trend…",color=Muted,fontSize=10.sp);return};Canvas(Modifier.fillMaxWidth().height(24.dp)){val low=0f;val range=if(percent)100f else values.max().coerceAtLeast(.1f);val path=Path();values.forEachIndexed{i,value->val x=i.toFloat()/(values.size-1)*size.width;val y=size.height-(value.coerceIn(0f,range)-low)/range*(size.height-4)-2;if(i==0)path.moveTo(x,y)else path.lineTo(x,y)};drawPath(path,color,style=androidx.compose.ui.graphics.drawscope.Stroke(2.dp.toPx()))}}
 
 @Composable private fun Title(value:String){Text(value,color=Paper,fontSize=25.sp,fontWeight=FontWeight.SemiBold,modifier=Modifier.padding(vertical=12.dp))}
 @Composable private fun Info(label:String,value:String){Row(Modifier.fillMaxWidth().padding(vertical=8.dp),horizontalArrangement=Arrangement.spacedBy(16.dp)){Text(label,color=Muted,fontSize=12.sp,modifier=Modifier.weight(1f));Text(value,color=Paper,fontSize=12.sp,modifier=Modifier.weight(1.6f))}}
-@Composable internal fun Usage(label:String,value:Float?,color:Color){Row(Modifier.fillMaxWidth().padding(top=5.dp,bottom=4.dp),horizontalArrangement=Arrangement.SpaceBetween){Text(label,color=Muted,fontSize=12.sp);Text("${value.fmt()}%",color=Paper,fontSize=12.sp)};if(value!=null)LinearProgressIndicator(progress={(value/100).coerceIn(0f,1f)},color=color,trackColor=Color(0xFF3C4250),modifier=Modifier.fillMaxWidth().height(3.dp),drawStopIndicator={})}
+@Composable internal fun Usage(label:String,value:Float?,color:Color){Row(Modifier.fillMaxWidth().padding(top=5.dp,bottom=4.dp),horizontalArrangement=Arrangement.SpaceBetween){Text(label,color=Muted,fontSize=12.sp);Text("${value.fmt()}%",color=Paper,fontSize=12.sp)};if(value!=null)LinearProgressIndicator(progress={(value/100).coerceIn(0f,1f)},color=color,trackColor=DeskColors.raised,modifier=Modifier.fillMaxWidth().height(3.dp),drawStopIndicator={})}
 @Composable private fun Nodes(open:(String)->Unit){
  val wide=wideWindow()
 
@@ -464,7 +642,30 @@ private fun widgetColor(kind:String)=when(kind){"Clock"->welcomeColor();"GitOps"
  }}}}
 }
 private val iconCache=android.util.LruCache<String,android.graphics.Bitmap>(40)
-@Composable internal fun AppIcon(inputIcon:String,name:String){val asset=when(name.lowercase()){"argocd"->"https://raw.githubusercontent.com/selfhst/icons/main/png/argo-cd.png";"alloy"->"https://raw.githubusercontent.com/selfhst/icons/main/png/grafana-alloy.png";else->inputIcon};val context=LocalContext.current;var bitmap by remember(asset){mutableStateOf(iconCache.get(asset))};LaunchedEffect(asset){if(asset.isNotEmpty()&&bitmap==null){bitmap=withContext(Dispatchers.IO){try{require(asset.startsWith("https://raw.githubusercontent.com/")||asset.startsWith("https://cdn.jsdelivr.net/"));val file=java.io.File(context.cacheDir,"asset-${asset.hashCode()}.png");val bytes=if(file.exists())file.readBytes()else{val connection=URL(asset).openConnection().apply{connectTimeout=4000;readTimeout=4000};connection.getInputStream().use{it.readBytes().also{data->require(data.size<1048576);file.writeBytes(data)}}};BitmapFactory.decodeByteArray(bytes,0,bytes.size,BitmapFactory.Options().apply{inSampleSize=4})?.also{iconCache.put(asset,it)}}catch(_:Exception){null}}}};if(bitmap!=null)Image(bitmap!!.asImageBitmap(),contentDescription=null,modifier=Modifier.size(26.dp))else Box(Modifier.size(26.dp).clip(RoundedCornerShape(7.dp)).background(Color(0xFF394462)),contentAlignment=Alignment.Center){Text(name.take(1).uppercase(),color=Paper,fontSize=12.sp)}}
+@Composable internal fun AppIcon(inputIcon: String, name: String) {
+ val context = LocalContext.current
+ val key = "$name:$inputIcon"
+ var bitmap by remember(key) { mutableStateOf(iconCache.get(key)) }
+ LaunchedEffect(key) {
+  if (bitmap == null && (inputIcon.isNotBlank() || name.lowercase() in listOf("argocd", "alloy", "kubernetes", "prometheus"))) {
+   bitmap = withContext(Dispatchers.IO) {
+    runCatching {
+     val file = java.io.File(context.cacheDir, "asset-${key.hashCode()}.png")
+     val bytes = if (file.isFile && file.length() in 1..(512L * 1024)) file.readBytes()
+      else LiveRepository.requestIcon(Pairing.read(context) ?: error("Pairing required"), name)
+       .also { file.writeBytes(it) }
+     BitmapFactory.decodeByteArray(bytes, 0, bytes.size, BitmapFactory.Options().apply { inSampleSize = 4 })
+      ?.also { iconCache.put(key, it) }
+    }.getOrNull()
+   }
+  }
+ }
+ bitmap?.let { Image(it.asImageBitmap(), contentDescription = null, modifier = Modifier.size(26.dp)) }
+  ?: Box(
+   Modifier.size(26.dp).clip(RoundedCornerShape(7.dp)).background(DeskColors.selected),
+   contentAlignment = Alignment.Center
+  ) { Text(name.take(1).uppercase(), color = Paper, fontSize = 12.sp) }
+}
 @Composable private fun Apps(open:(String)->Unit){
  var search by rememberSaveable{mutableStateOf("")}
  var filter by rememberSaveable{mutableStateOf("All")}
@@ -525,52 +726,252 @@ private val iconCache=android.util.LruCache<String,android.graphics.Bitmap>(40)
  }
 }
 
-@Composable private fun MetricWidget(w:DeskWidget,modifier:Modifier){
- val cpu=w.kind=="CPU";val value=if(cpu)LiveRepository.cpuPercent else LiveRepository.memoryPercent
- val values=LiveRepository.history[if(cpu)"cpu"else"memory"].orEmpty()
- Column(modifier.fillMaxSize(),verticalArrangement=Arrangement.spacedBy(2.dp)){
-  Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween){Text(w.label.ifBlank{w.kind},color=Muted,fontSize=12.sp);if(w.width>2)Text(if(!LiveRepository.state.startsWith("Live"))"Cached"else"Recent",color=Muted,fontSize=10.sp)}
-  Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(8.dp)){
-   Box(Modifier.size(58.dp), contentAlignment=Alignment.Center){
-    Canvas(Modifier.fillMaxSize().padding(4.dp)){
-     val stroke = androidx.compose.ui.graphics.drawscope.Stroke(5.dp.toPx(),cap=androidx.compose.ui.graphics.StrokeCap.Round)
-     drawCircle(Color(0xFF2B3040),style=stroke)
-     if(value != null && value > 0) drawArc(if(cpu)Cobalt else Lilac,-90f,value.coerceIn(0f,100f)*3.6f,false,style=stroke)
+@Composable private fun MetricWidget(widget: DeskWidget, modifier: Modifier) {
+ val cpu = widget.kind == "CPU"
+ val reading = if (cpu) LiveRepository.cpuPercent else LiveRepository.memoryPercent
+ val denominator = when {
+  reading == null -> "Unavailable"
+  cpu -> "of ${LiveRepository.totalCores} cores · 5 min"
+  else -> "${LiveRepository.usedMemory.fmt()} of ${LiveRepository.totalMemory.fmt()} GiB"
+ }
+ val accent = Cobalt
+ val track = DeskColors.track
+ val cached = !LiveRepository.state.startsWith("Live")
+ val age = if (cached) "Cached" else sourceAge(widget.kind)?.let { "${formatObservationAge(it)} old" }
+ val landscape = wideWindow()
+ val samples = LiveRepository.history[if (cpu) "cpu" else "memory"].orEmpty()
+ BoxWithConstraints(modifier.fillMaxSize()) {
+  val wideTile = maxWidth >= 134.dp
+  val tallTile = maxHeight >= 117.dp
+  val showTrend = widget.height > 1 && maxHeight >= 155.dp && samples.size > 1
+  val diameter = if (if (landscape) wideTile else tallTile) 84.dp else 58.dp
+  @Composable fun gauge() {
+   Box(
+    Modifier.size(diameter).semantics {
+     contentDescription = if (reading == null) "${widget.kind} unavailable"
+      else "${widget.kind} ${reading.fmt()} percent · $denominator"
+    },
+    contentAlignment = Alignment.Center
+   ) {
+    Canvas(Modifier.fillMaxSize().padding((diameter * .10f))) {
+     val stroke = Stroke((diameter * .105f).toPx(), cap = androidx.compose.ui.graphics.StrokeCap.Round)
+     drawCircle(track, style = stroke)
+     if (reading != null && reading > 0) drawArc(accent, -90f, reading.coerceIn(0f, 100f) * 3.6f, false, style = stroke)
     }
-   Text(if(value==null)"—"else"${value.fmt()}%",color=Paper,fontSize=13.sp,lineHeight=16.sp,fontWeight=FontWeight.SemiBold)
+    Text(reading?.let { "${it.fmt()}%" } ?: "—", color = Paper,
+     fontSize = if (diameter >= 84.dp) 19.sp else 13.sp, fontWeight = FontWeight.Bold, maxLines = 1)
    }
-   if(w.width>=2)Text(if(cpu)if(value==null)"Usage unavailable"else"${(value/100f*LiveRepository.totalCores).fmt()} / ${LiveRepository.totalCores} cores"else"${LiveRepository.usedMemory.fmt()} / ${LiveRepository.totalMemory.fmt()} GiB",color=Muted,fontSize=10.sp,lineHeight=12.sp,maxLines=2)
   }
-  if(values.size<2)Text("Collecting trend…",color=Muted,fontSize=10.sp)else Canvas(Modifier.fillMaxWidth().weight(1f).heightIn(min=12.dp).semantics{contentDescription="${w.kind} recent samples, zero to one hundred percent"}){
-   val path=Path();values.forEachIndexed{i,v->val x=i.toFloat()/(values.size-1)*size.width;val y=size.height*(1-v.coerceIn(0f,100f)/100f);if(i==0)path.moveTo(x,y)else path.lineTo(x,y)}
-   drawPath(path,if(cpu)Cobalt else Lilac,style=androidx.compose.ui.graphics.drawscope.Stroke(1.6.dp.toPx()))
+  @Composable fun caption(centered: Boolean) {
+   val align = if (centered) Alignment.CenterHorizontally else Alignment.Start
+   val textAlign = if (centered) androidx.compose.ui.text.style.TextAlign.Center else androidx.compose.ui.text.style.TextAlign.Start
+   Column(horizontalAlignment = align, verticalArrangement = Arrangement.spacedBy(2.dp)) {
+    Text(widget.label.ifBlank { widget.kind }, color = Paper, fontSize = 14.sp, lineHeight = 16.sp,
+     fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+    Text(denominator, color = Muted, fontSize = 10.sp, lineHeight = 12.sp, maxLines = 2, textAlign = textAlign)
+    if (age != null && (tallTile || cached)) Text(age, color = Muted, fontSize = 10.sp, lineHeight = 11.sp, maxLines = 1)
+   }
+  }
+  @Composable fun trend() {
+   if (showTrend) {
+    Text("Recent samples", color = Muted, fontSize = 10.sp)
+    Spark(samples, accent, percent = true)
+   }
+  }
+  if (landscape && wideTile) {
+   Column(Modifier.fillMaxSize()) {
+    Row(Modifier.fillMaxWidth().weight(1f), verticalAlignment = Alignment.CenterVertically,
+     horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+     gauge()
+     Box(Modifier.weight(1f)) { caption(false) }
+    }
+    trend()
+   }
+  } else {
+   Column(Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally,
+    verticalArrangement = Arrangement.spacedBy(2.dp, Alignment.CenterVertically)) {
+    gauge()
+    caption(true)
+    trend()
+   }
   }
  }
 }
 
 @Composable private fun SummaryWidget(w:DeskWidget,modifier:Modifier){
- val pastel=w.kind=="GitOps"||(w.kind=="Attention"&&attentionActive());val fg=if(pastel)Color(0xFF29233D)else Paper;val sub=if(pastel)fg.copy(alpha=.8f)else Muted
- val event=LiveRepository.active.firstOrNull{needsAttention(it)}
+ if (w.kind == "Monitors") {
+  HomeMonitorSummary(w.label, modifier)
+  return
+ }
+ val fg=Paper;val sub=Muted
+ val verdict = currentVerdict()
+ val event = verdict.incidents.firstOrNull()
  val latest=LiveRepository.events.firstOrNull{(w.target.isBlank()||w.target=="All"||it.source==w.target)&&(LocalShowTests.current||!(it.kind=="Test"||it.source=="Test"||it.title=="Test"))}
  val known=LiveRepository.lastSuccess>0L
- val value=if(!known)"—"else when(w.kind){"Attention"->event?.let(::incidentTitle)?:LiveRepository.issues.firstOrNull()?.title?:if(LiveRepository.state.startsWith("Live")&&LiveRepository.signals.isNotEmpty()&&LiveRepository.signals.values.all{it})"All clear"else"Unconfirmed";"GitOps"->"${LiveRepository.services.count{it.health=="Healthy"&&it.sync=="Synced"}} / ${LiveRepository.services.size}";"Nodes"->"${LiveRepository.nodes.count{it.ready}} / ${LiveRepository.nodes.size}";"Monitors"->"${LiveRepository.monitorsUp?:"—"} / ${LiveRepository.monitorsTotal?:"—"}";else->latest?.let(::incidentTitle)?:"No recent activity"}
- val supporting=if(!known)"Connecting…"else when(w.kind){"Attention"->event?.let{"${it.state} · ${it.kind} · ${it.node.ifBlank{it.source}}"}?:"${LiveRepository.active.count{it.state=="Firing"&&!isInformational(it.kind)}} firing · ${LiveRepository.active.count{it.state=="Pending"&&!isInformational(it.kind)}} pending";"GitOps"->"Healthy & synced";"Nodes"->"Nodes ready";"Monitors"->"Checks up";else->latest?.let{listOf(it.state,it.node.ifBlank{it.namespace}).filter{v->v.isNotBlank()}.joinToString(" · ")+" · "+localTime(it.resolvedAt.ifBlank{it.time})}?:"No records"}
+ val value=if(!known)"—"else when(w.kind){"Attention"->event?.let(::incidentTitle) ?: verdict.verdict.label;"GitOps"->"${LiveRepository.services.count{it.sync=="Synced"}} / ${LiveRepository.services.size}";"Nodes"->"${LiveRepository.nodes.count{it.ready}} / ${LiveRepository.nodes.size}";"Monitors"->"${LiveRepository.monitorsUp?:"—"} / ${LiveRepository.monitorsTotal?:"—"}";else->latest?.let(::incidentTitle)?:"No recent activity"}
+ val supporting=if(!known)"Connecting…"else when(w.kind){"Attention"->event?.let{"${it.state} · ${it.kind} · ${it.node.ifBlank{it.source}}"}?:"${LiveRepository.active.count{it.state=="Firing"&&!isInformational(it.kind)}} firing · ${LiveRepository.active.count{it.state=="Pending"&&!isInformational(it.kind)}} pending";"GitOps"->"Apps synced";"Nodes"->"Nodes ready";"Monitors"->"Checks up";else->latest?.let{listOf(it.state,it.node.ifBlank{it.namespace}).filter{v->v.isNotBlank()}.joinToString(" · ")+" · "+localTime(it.resolvedAt.ifBlank{it.time})}?:"No records"}
  BoxWithConstraints(modifier.fillMaxSize()){
   val compact=maxHeight<80.dp;val roomy=maxHeight>110.dp
   Column(Modifier.fillMaxSize(),verticalArrangement=Arrangement.spacedBy(if(compact)1.dp else 6.dp)){
-   Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically){Text(w.label.ifBlank{when(w.kind){"Attention"->if(attentionActive())"Needs attention"else"Cluster status";"Events"->"Recent activity";else->w.kind}},color=sub,fontSize=11.sp,lineHeight=13.sp,modifier=Modifier.weight(1f));if(w.kind=="GitOps")LabGlyph("GitOps",fg,16.dp)}
+   Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically){Text(w.label.ifBlank{when(w.kind){"Attention"->if(attentionActive())"Needs attention"else"Cluster status";"Events"->"Recent activity";"Nodes"->"Nodes · CPU · memory";else->w.kind}},color=sub,fontSize=11.sp,lineHeight=13.sp,modifier=Modifier.weight(1f));if(w.kind=="GitOps")LabGlyph("GitOps",fg,16.dp)}
    Text(value,color=fg,fontSize=if(w.width<2)17.sp else if(value.length>12)if(compact)14.sp else 17.sp else if(compact)23.sp else 32.sp,lineHeight=if(compact)25.sp else 36.sp,maxLines=1,overflow=TextOverflow.Ellipsis,fontWeight=FontWeight.SemiBold)
    Text(supporting,color=sub,fontSize=10.sp,lineHeight=12.sp,maxLines=1,overflow=TextOverflow.Ellipsis)
-   if(roomy&&w.kind=="Nodes")Row(Modifier.fillMaxWidth().padding(top=4.dp),horizontalArrangement=Arrangement.spacedBy(5.dp)){LiveRepository.nodes.forEach{node->Column(Modifier.weight(1f)){Box(Modifier.fillMaxWidth().height(4.dp).background(if(node.ready)Mint else Apricot,RoundedCornerShape(3.dp)));Text(node.name,color=sub,fontSize=9.sp,maxLines=1)}}}
+
+   if (roomy && w.kind == "Nodes") HomeNodeBars()
   }
  }
 }
 
 private fun routeTitle(route:String):String=when {
+ route.startsWith("cluster-history:")->if(route.substringAfter(":").substringBefore("@") == "cpu") "CPU history" else "Memory history"
  route.startsWith("monitor:")->LiveRepository.monitors.find{it.id==route.substringAfter(":")}?.name?:"Monitor"
  route.startsWith("pod:")->route.substringAfter('/').substringBefore('@')
  route.startsWith("event:")->(LiveRepository.active+LiveRepository.events).find{it.id==route.substringAfter(":")}?.let(::incidentTitle)?:"Incident"
  route.startsWith("events-history:")->"Recent activity"
  route.startsWith("events-source:")->"Inbox · ${route.substringAfter(":")}"
  else->route.substringAfter(":")
+}
+
+@Composable
+private fun HomeMonitorSummary(label: String, modifier: Modifier) {
+ val up = LiveRepository.monitorsUp
+ val total = LiveRepository.monitorsTotal
+ BoxWithConstraints(modifier.fillMaxSize()) {
+  val compact = maxHeight < 80.dp
+  val showDots = maxHeight >= 66.dp
+  Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+   Text(label.ifBlank { "Monitors" }, color = Muted, fontSize = 11.sp, lineHeight = 13.sp)
+   if (up == null || total == null) Text("Unavailable", color = Paper, fontSize = 16.sp)
+   else {
+    Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+     Text(up.toString(), color = Paper, fontSize = if (compact) 23.sp else 30.sp,
+      lineHeight = if (compact) 25.sp else 32.sp, fontWeight = FontWeight.SemiBold)
+     Text("of $total up", color = Muted, fontSize = 12.sp, maxLines = 1)
+    }
+    if (showDots) MonitorDotGrid(if (compact) 16.dp else 24.dp)
+   }
+  }
+ }
+}
+
+@Composable
+private fun MonitorDotGrid(height: androidx.compose.ui.unit.Dp) {
+ val monitors = LiveRepository.monitors
+ if (monitors.isEmpty()) return
+ val palette = DeskColors
+ val up = monitors.count { it.status == "Up" }
+ val down = monitors.count { it.status == "Down" }
+ val unknown = monitors.size - up - down
+ Canvas(Modifier.fillMaxWidth().height(height).semantics {
+  contentDescription = "$up up, $down down, $unknown other monitor states"
+ }) {
+  val columns = minOf(16, monitors.size)
+  val rows = (monitors.size + columns - 1) / columns
+  val stepX = size.width / columns
+  val stepY = size.height / rows
+  val radius = minOf(stepX, stepY) * .33f
+  monitors.forEachIndexed { index, monitor ->
+   val center = Offset((index % columns + .5f) * stepX, (index / columns + .5f) * stepY)
+   when (monitor.status) {
+    "Up" -> drawCircle(palette.blue, radius, center)
+    "Down" -> drawPath(Path().apply {
+     moveTo(center.x, center.y - radius)
+     lineTo(center.x + radius, center.y + radius)
+     lineTo(center.x - radius, center.y + radius)
+     close()
+    }, palette.apricot)
+    else -> drawCircle(palette.muted, radius, center, style = androidx.compose.ui.graphics.drawscope.Stroke(1.dp.toPx()))
+   }
+  }
+ }
+}
+
+@Composable
+private fun HomeNodeBars() {
+ val palette = DeskColors
+ Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+  LiveRepository.nodes.forEach { node ->
+   val cpu = node.cpuPercent.takeIf { node.available }
+   val memory = if (node.available && node.memoryTotalGiB > 0)
+    node.memoryUsedGiB / node.memoryTotalGiB * 100 else null
+   Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+    Text(node.name, color = palette.text, fontSize = 11.sp, maxLines = 1, modifier = Modifier.weight(1f))
+    Text(if (cpu == null || memory == null) "Unavailable" else "${cpu.fmt()}% · ${memory.fmt()}%",
+     color = palette.muted, fontSize = 10.sp, maxLines = 1)
+   }
+   Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+    listOf("CPU" to cpu, "Memory" to memory).forEach { (label, reading) ->
+     LinearProgressIndicator(
+      progress = { ((reading ?: 0f) / 100).coerceIn(0f, 1f) },
+      modifier = Modifier.weight(1f).height(4.dp).semantics {
+       contentDescription = if (reading == null) "$label unavailable" else "$label ${reading.fmt()} percent"
+      },
+      color = palette.blue, trackColor = palette.raised, drawStopIndicator = {}
+     )
+    }
+   }
+  }
+ }
+}
+
+@Composable
+private fun ClusterMetricOverview(openHistory: (String, String) -> Unit) {
+ var metric by rememberSaveable { mutableStateOf("CPU") }
+ val cpu = metric == "CPU"
+ val current = if (cpu) LiveRepository.cpuPercent else LiveRepository.memoryPercent
+ Column(
+  Modifier.fillMaxWidth().padding(vertical = 4.dp).clip(RoundedCornerShape(24.dp)).background(Card).padding(14.dp),
+  verticalArrangement = Arrangement.spacedBy(6.dp)
+ ) {
+  DeskSegments(listOf("CPU", "Memory"), metric, { metric = it })
+  Text(current?.let { "${it.fmt()}%" } ?: "Unavailable", color = Paper, fontSize = 34.sp, fontWeight = FontWeight.Bold)
+  val capacity = if (cpu) "of ${LiveRepository.totalCores} logical cores"
+   else "${LiveRepository.usedMemory.fmt()} of ${LiveRepository.totalMemory.fmt()} GiB"
+  if (current != null) Text(capacity, color = Muted, fontSize = 12.sp)
+  val kind = if (cpu) "cpu" else "memory"
+  MetricHistoryPanel("kind=cluster-$kind", openExpanded = { range -> openHistory(kind, range) })
+ }
+}
+
+@Composable
+private fun ClusterNodeOverview(open: (String) -> Unit) {
+ CompanionPanel("Nodes") {
+  val nodes = LiveRepository.nodes
+  if (nodes.isEmpty()) Text("Node readings unavailable", color = Muted, fontSize = 13.sp)
+  nodes.forEach { node ->
+   val memory = if (node.available && node.memoryTotalGiB > 0) node.memoryUsedGiB / node.memoryTotalGiB * 100 else null
+   Row(
+    Modifier.fillMaxWidth().heightIn(min = 44.dp).clickable { open(node.name) },
+    verticalAlignment = Alignment.CenterVertically,
+    horizontalArrangement = Arrangement.spacedBy(8.dp)
+   ) {
+    VerdictMark(if (node.ready) Verdict.Calm else Verdict.Unknown)
+    Text(node.name, color = Paper, fontSize = 14.sp, modifier = Modifier.weight(1f))
+    val usage = if (node.available && memory != null) "CPU ${node.cpuPercent.fmt()}% · MEM ${memory.fmt()}%" else "Usage unavailable"
+    Text(usage, color = Muted, fontSize = 11.sp)
+   }
+  }
+ }
+}
+
+@Composable
+private fun ClusterAppOverview(open: (String) -> Unit, openAll: () -> Unit) {
+ val apps = LiveRepository.services
+ val synced = apps.count { it.sync == "Synced" }
+ val title = if (apps.isEmpty()) "Argo CD" else "Argo CD · $synced of ${apps.size} synced"
+ CompanionPanel(title) {
+  if (apps.isEmpty()) Text("Application status unavailable", color = Muted, fontSize = 13.sp)
+  apps.sortedWith(compareBy({ it.health == "Healthy" && it.sync == "Synced" }, { it.name })).take(5).forEach { app ->
+   Row(
+    Modifier.fillMaxWidth().heightIn(min = 44.dp).clickable { open(app.name) },
+    verticalAlignment = Alignment.CenterVertically,
+    horizontalArrangement = Arrangement.spacedBy(8.dp)
+   ) {
+    VerdictMark(if (app.health == "Healthy" && app.sync == "Synced") Verdict.Calm else Verdict.Attention)
+    Text(app.name, color = Paper, fontSize = 14.sp, modifier = Modifier.weight(1f))
+    Text(listOf(app.health, app.sync).filter(String::isNotBlank).joinToString(" · ").ifBlank { "Unknown" }, color = Muted, fontSize = 11.sp)
+   }
+  }
+  if (apps.size > 5) DeskAction("All applications") { openAll() }
+ }
 }

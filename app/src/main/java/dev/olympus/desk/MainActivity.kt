@@ -15,20 +15,28 @@ import androidx.activity.compose.setContent
 import androidx.compose.material3.*
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.*
 import androidx.compose.ui.unit.sp
 import dev.olympus.desk.data.*
 import kotlinx.coroutines.*
-import kotlinx.coroutines.flow.takeWhile
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.setValue
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.collectLatest
+import androidx.compose.runtime.*
+import androidx.compose.foundation.isSystemInDarkTheme
 
-private val Ink=DeskColors.background
-private val Tile=DeskColors.surface
-private val Cobalt=DeskColors.blue
-private val Paper=DeskColors.text
+
+
+@OptIn(androidx.compose.ui.text.ExperimentalTextApi::class)
+private val Figtree = FontFamily(
+    Font(R.font.figtree, FontWeight.Normal, variationSettings = FontVariation.Settings(FontVariation.weight(400))),
+    Font(R.font.figtree, FontWeight.Medium, variationSettings = FontVariation.Settings(FontVariation.weight(500))),
+    Font(R.font.figtree, FontWeight.SemiBold, variationSettings = FontVariation.Settings(FontVariation.weight(600))),
+    Font(R.font.figtree, FontWeight.Bold, variationSettings = FontVariation.Settings(FontVariation.weight(700)))
+)
 class MainActivity:ComponentActivity(){
     private var notificationNonce by androidx.compose.runtime.mutableLongStateOf(0)
     private var notificationTarget by androidx.compose.runtime.mutableStateOf("")
+    @OptIn(androidx.compose.ui.text.ExperimentalTextApi::class)
     override fun onCreate(savedInstanceState:Bundle?){
         super.onCreate(savedInstanceState)
         WindowCompat.setDecorFitsSystemWindows(window,false)
@@ -43,25 +51,68 @@ class MainActivity:ComponentActivity(){
         pairFromDebugIntent(intent)
         if(getSharedPreferences("home-v3",0).getBoolean("backgroundAlerts",false))startForegroundService(Intent(this,AlertWatchService::class.java))
         lifecycleScope.launch {
-          val cache=java.io.File(filesDir,"last-frame.json")
-          val saved=withContext(Dispatchers.IO){try{if(cache.exists()&&cache.length()<3*1024*1024)cache.readText()else null}catch(_:Exception){null}}
-          if(saved!=null)try{LiveRepository.restore(saved)}catch(_:Exception){}
-          repeatOnLifecycle(Lifecycle.State.STARTED) {
-            launch { while(isActive){LiveRepository.checkFreshness();delay(5000)} }
-            var retry=1000L
-            while(isActive){
-                if(getSharedPreferences("home-v3",0).getBoolean("backgroundAlerts",false)){delay(1000);continue}
-                val pair=Pairing.read(this@MainActivity)
-                if(pair==null){delay(3000);continue}
-                try{LiveRepository.stream(pair).takeWhile{!getSharedPreferences("home-v3",0).getBoolean("backgroundAlerts",false)}.collect{LiveRepository.applyFrame(it);retry=1000L;withContext(Dispatchers.IO){try{val temp=java.io.File(filesDir,"last-frame.tmp");temp.writeText(it);temp.renameTo(cache)}catch(_:Exception){android.util.Log.w("Olympus","snapshot_cache_write_failed")}}};if(!getSharedPreferences("home-v3",0).getBoolean("backgroundAlerts",false))LiveRepository.unavailable()}
-                catch(e:CancellationException){throw e}
-                catch(_:Exception){LiveRepository.unavailable()}
-                LiveRepository.awaitRetry(retry);retry=(retry*2).coerceAtMost(30000)
+            val settings = getSharedPreferences("home-v3", MODE_PRIVATE)
+            val backgroundAlerts = MutableStateFlow(settings.getBoolean("backgroundAlerts", false))
+            val listener = android.content.SharedPreferences.OnSharedPreferenceChangeListener { prefs, key ->
+                if (key == "backgroundAlerts") backgroundAlerts.value = prefs.getBoolean(key, false)
             }
-        }}
+            settings.registerOnSharedPreferenceChangeListener(listener)
+            try {
+                val cached = withContext(Dispatchers.IO) { LiveRepository.cachedFrame(this@MainActivity) }
+                if (cached != null && LiveRepository.lastSuccess == 0L) runCatching { LiveRepository.restore(cached) }
+                repeatOnLifecycle(Lifecycle.State.STARTED) {
+                    launch {
+                        while (isActive) {
+                            LiveRepository.checkFreshness()
+                            delay(5000)
+                        }
+                    }
+                    backgroundAlerts.collectLatest { watchedByService ->
+                        if (watchedByService) return@collectLatest
+                        val pair = Pairing.read(this@MainActivity) ?: return@collectLatest
+                        var retry = 1000L
+                        while (isActive) {
+                            LiveRepository.reconnecting()
+                            try {
+                                LiveRepository.stream(pair).collect { frame ->
+                                    LiveRepository.applyFrame(frame)
+                                    OlympusStatusWidget.publish(this@MainActivity)
+                                    retry = 1000L
+                                    withContext(Dispatchers.IO) { LiveRepository.cacheFrame(this@MainActivity, frame) }
+                                }
+                                LiveRepository.unavailable()
+                            } catch (cancelled: CancellationException) {
+                                throw cancelled
+                            } catch (_: Exception) {
+                                LiveRepository.unavailable()
+                            }
+                            LiveRepository.awaitRetry(retry)
+                            retry = (retry * 2).coerceAtMost(30_000)
+                        }
+                    }
+                }
+            } finally {
+                settings.unregisterOnSharedPreferenceChangeListener(listener)
+            }
+        }
         setContent {
+            val settings = remember { getSharedPreferences("home-v3", MODE_PRIVATE) }
+            var appearance by remember { mutableStateOf(settings.getString("appearance", "Dark")) }
+            DisposableEffect(settings) {
+                val listener = android.content.SharedPreferences.OnSharedPreferenceChangeListener { prefs, key ->
+                    if (key == "appearance") appearance = prefs.getString(key, "Dark")
+                }
+                settings.registerOnSharedPreferenceChangeListener(listener)
+                onDispose { settings.unregisterOnSharedPreferenceChangeListener(listener) }
+            }
+            val light = appearance == "Light" || (appearance == "System" && !isSystemInDarkTheme())
+            val palette = if (light) LightDesk else DarkDesk
+            val base = if (light) lightColorScheme() else darkColorScheme()
             MaterialTheme(
-                colorScheme=darkColorScheme(primary=Cobalt,background=Ink,surface=Tile,onSurface=Paper,onBackground=Paper,onPrimary=Ink,primaryContainer=Color(0xFF394C9B),onPrimaryContainer=Paper,secondary=Color(0xFFCDC5FF),onSecondary=Ink,secondaryContainer=Color(0xFF30384A),onSecondaryContainer=Paper,tertiary=Color(0xFFEDB48F),onTertiary=Ink,surfaceVariant=Color(0xFF30384A),onSurfaceVariant=Color(0xFFBFC4D1),outline=Color(0xFF535B6D),error=Color(0xFFEDB48F),onError=Ink),
+                colorScheme = base.copy(primary = palette.blue, background = palette.background, surface = palette.surface,
+                    onSurface = palette.text, onBackground = palette.text, onPrimary = if (light) Color.White else palette.background,
+                    primaryContainer = palette.selected, onPrimaryContainer = palette.text, secondaryContainer = palette.selected,
+                    onSecondaryContainer = palette.text, surfaceVariant = palette.raised, onSurfaceVariant = palette.muted, error = palette.critical),
                 typography=Typography(
                     bodyLarge=TextStyle(fontSize=13.sp),
                     bodyMedium=TextStyle(fontSize=12.sp),
@@ -69,7 +120,7 @@ class MainActivity:ComponentActivity(){
                     labelLarge=TextStyle(fontSize=12.sp,lineHeight=16.sp),
                     labelMedium=TextStyle(fontSize=11.sp,lineHeight=14.sp)
                 )
-            ) { HomeApp(notificationTarget,notificationNonce) }
+            ) { ProvideTextStyle(LocalTextStyle.current.copy(fontFamily = Figtree)) { CompositionLocalProvider(LocalDeskPalette provides palette) { HomeApp(notificationTarget,notificationNonce) } } }
         }
     }
     private fun immersive(){WindowCompat.getInsetsController(window,window.decorView).apply{systemBarsBehavior=WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE;hide(WindowInsetsCompat.Type.systemBars())}}

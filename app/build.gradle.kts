@@ -6,8 +6,8 @@ android {
         applicationId = "dev.olympus.desk"
         minSdk = 29
         targetSdk = 37
-        versionCode = 11
-        versionName = "0.7.0"
+        versionCode = 12
+        versionName = "0.8.0"
     }
     buildFeatures { compose = true; buildConfig = true }
     compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
@@ -16,6 +16,7 @@ dependencies {
     implementation(platform("androidx.compose:compose-bom:2026.04.01"))
     implementation("androidx.activity:activity-compose:1.12.4")
     implementation("androidx.compose.material3:material3")
+    implementation("com.journeyapps:zxing-android-embedded:4.3.0")
     implementation("androidx.compose.animation:animation")
     implementation("androidx.compose.ui:ui-tooling-preview")
     debugImplementation("androidx.compose.ui:ui-tooling")

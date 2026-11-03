@@ -11,4 +11,9 @@ class AlertWatchTest{
  @Test fun changedSeverityIsNotSuppressedAsADuplicate(){assertEquals(1,alertCandidates(listOf(event(kind="critical")),mapOf("one" to "Firing|warning"),true,true).size);assertTrue(alertCandidates(listOf(event()),mapOf("one" to "Firing|warning"),true,true).isEmpty())}
  @Test fun arrActivityRespectsTheAppNotificationToggle(){assertEquals(1,alertCandidates(listOf(event("Activity",source="Sonarr")),emptyMap(),true,false).size);assertTrue(alertCandidates(listOf(event("Activity",source="Sonarr")),emptyMap(),false,false).isEmpty())}
  @Test fun quietHoursSupportOvernightAndSameDay(){assertTrue(quietHour(23,22,7));assertTrue(quietHour(6,22,7));assertFalse(quietHour(12,22,7));assertTrue(quietHour(12,9,17));assertFalse(quietHour(12,7,7))}
+ @Test fun criticalBypassesQuietHoursButRespectsExplicitSilence() {
+  assertTrue(shouldNotifyNow(quiet = true, silenced = false, critical = true))
+  assertFalse(shouldNotifyNow(quiet = true, silenced = false, critical = false))
+  assertFalse(shouldNotifyNow(quiet = false, silenced = true, critical = true))
+ }
 }

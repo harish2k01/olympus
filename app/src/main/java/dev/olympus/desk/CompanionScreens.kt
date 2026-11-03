@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
@@ -13,7 +14,7 @@ import androidx.compose.ui.unit.sp
 import dev.olympus.desk.data.*
 import org.json.JSONObject
 
-@Composable private fun CompanionPanel(title:String,content:@Composable ColumnScope.()->Unit){
+@Composable internal fun CompanionPanel(title:String,content:@Composable ColumnScope.()->Unit){
  Column(Modifier.fillMaxWidth().padding(vertical=6.dp).clip(RoundedCornerShape(16.dp)).background(DeskColors.surface).padding(12.dp),verticalArrangement=Arrangement.spacedBy(8.dp)){
   Text(title,color=DeskColors.text,fontSize=18.sp)
   content()
@@ -88,13 +89,45 @@ import org.json.JSONObject
 }
 
 @Composable internal fun IntegrationDetailScreen(name:String,open:(String)->Unit){
+ val context = LocalContext.current
  val integration=LiveRepository.integrations.find{it.name==name}
  val app=LiveRepository.services.find{it.name==name}
  CompanionPanel(name){
-  Text(if(integration?.error?.isNotBlank()==true)"Some fields unavailable"else if(integration==null)"Integration unavailable"else"Connected integration",color=if(integration?.error?.isNotBlank()==true)DeskColors.apricot else DeskColors.green,fontSize=14.sp)
+  val ageSeconds = integration?.time?.let { stamp ->
+   runCatching { java.time.Duration.between(java.time.Instant.parse(stamp), java.time.Instant.now()).seconds.coerceAtLeast(0) }.getOrNull()
+  }
+  val status = when {
+   integration == null -> "Integration unavailable"
+   !LiveRepository.state.startsWith("Live") -> "Cached integration data"
+   integration.error.isNotBlank() -> "Some fields unavailable"
+   ageSeconds == null -> "Collection time unavailable"
+   ageSeconds >= 300 -> "Stale · ${ageSeconds / 60} min old"
+   ageSeconds >= 60 -> "Aging · ${ageSeconds / 60} min old"
+   else -> "Fresh · ${ageSeconds} s old"
+  }
+  val fresh = status.startsWith("Fresh")
+  Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+   VerdictMark(if (fresh) Verdict.Calm else Verdict.Unknown)
+   Text(status, color = if (fresh) DeskColors.blue else DeskColors.muted, fontSize = 14.sp)
+  }
   integration?.fields?.entries?.forEach{(label,value)->Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween){Text(label,color=DeskColors.muted);Text(value?.toInt()?.toString()?:"Unavailable",color=DeskColors.text)}}
   if(integration?.time?.isNotBlank()==true)Text("Collected · ${localTime(integration.time)}",color=DeskColors.muted,fontSize=12.sp)
   if(app!=null)DeskAction("Inspect application resources"){open("app:${app.name}")}
+ }
+ CompanionPanel("Health messages") {
+  val health = integration?.health
+  when {
+   health == null -> Text("Health check unavailable", color = DeskColors.muted, fontSize = 13.sp)
+   health.isEmpty() -> Text("No health messages reported", color = DeskColors.muted, fontSize = 13.sp)
+   else -> health.forEach { check ->
+    val contextLabel = listOf(check.type, check.source).filter(String::isNotBlank).joinToString(" · ")
+    if (contextLabel.isNotBlank()) Text(contextLabel, color = DeskColors.apricot, fontSize = 11.sp)
+    Text(check.message, color = DeskColors.text, fontSize = 13.sp)
+    if (check.wikiUrl.startsWith("https://")) DeskAction("Health documentation") {
+     runCatching { context.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(check.wikiUrl))) }
+    }
+   }
+  }
  }
  val related=(LiveRepository.active+LiveRepository.events).distinctBy{it.id}.filter{it.source.replace(" ","").equals(name.replace("-",""),true)||it.source.equals(name,true)}
  CompanionPanel("App notifications"){

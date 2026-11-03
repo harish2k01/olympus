@@ -5,6 +5,35 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <application android:allowBackup="false" android:fullBackupContent="false" android:dataExtractionRules="@xml/data_extraction_rules" android:label="Olympus" android:icon="@mipmap/ic_launcher" android:roundIcon="@mipmap/ic_launcher" android:theme="@style/Theme.Olympus" android:supportsRtl="true">
         <service android:name=".AlertWatchService" android:exported="false" android:foregroundServiceType="specialUse"><property android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE" android:value="User-enabled continuous connection to a private homelab for immediate operational incident notifications, with a visible stop action." /></service>
+        <service
+            android:name=".DeskModeTileService"
+            android:exported="true"
+            android:icon="@drawable/ic_desk_mode"
+            android:label="Olympus Desk mode"
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
+            <intent-filter>
+                <action android:name="android.service.quicksettings.action.QS_TILE" />
+            </intent-filter>
+            <meta-data android:name="android.service.quicksettings.TOGGLEABLE_TILE" android:value="true" />
+        </service>
+        <receiver android:name=".OlympusStatusWidget" android:exported="false" android:label="Olympus status">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data android:name="android.appwidget.provider" android:resource="@xml/olympus_widget_info" />
+        </receiver>
+        <receiver android:name=".OlympusExpandedStatusWidget" android:exported="false" android:label="Olympus overview">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data android:name="android.appwidget.provider" android:resource="@xml/olympus_widget_expanded_info" />
+        </receiver>
+        <receiver android:name=".OlympusLockScreenWidget" android:exported="false" android:label="Olympus lock screen verdict">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data android:name="android.appwidget.provider" android:resource="@xml/olympus_widget_keyguard_info" />
+        </receiver>
         <activity android:name=".MainActivity" android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
