@@ -66,9 +66,11 @@ type App struct {
 	Icon      string     `json:"icon"`
 	URL       string     `json:"url"`
 	Resources []Resource `json:"resources"`
+ LastSync string `json:"lastSync,omitempty"`
 }
 type Snapshot struct {
  HistoryPolicy historyPolicy `json:"historyPolicy"`
+ Links map[string]string `json:"links,omitempty"`
 	RecentActivity          map[string]int     `json:"recentActivity"`
 	RecentActivityWithTests map[string]int     `json:"recentActivityWithTests"`
 	Time                    string             `json:"time"`
@@ -186,7 +188,7 @@ func (s *server) snapshot(ctx context.Context) Snapshot {
 	if time.Since(s.cacheTime) < 5*time.Second {
 		return s.cached
 	}
-	out := Snapshot{Time: time.Now().UTC().Format(time.RFC3339), Nodes: []Node{}, Apps: []App{}, Errors: []string{}, ObservedAt: map[string]string{}, HistoryPolicy: historyPolicy{Days: historyRetentionDays, MaxRecords: historyRecordLimit, Persistent: s.history != ""}}
+	out := Snapshot{Time: time.Now().UTC().Format(time.RFC3339), Nodes: []Node{}, Apps: []App{}, Errors: []string{}, ObservedAt: map[string]string{}, HistoryPolicy: historyPolicy{Days: historyRetentionDays, MaxRecords: historyRecordLimit, Persistent: s.history != ""}, Links: dashboardLinks()}
 	var nodes struct {
 		Items []struct {
 			Metadata struct {
@@ -252,6 +254,7 @@ func (s *server) snapshot(ctx context.Context) Snapshot {
 				Health    struct{ Status string }
 				Sync      struct{ Status string }
 				Resources []Resource
+    History []struct{ DeployedAt time.Time }
 			}
 		} `json:"items"`
 	}
@@ -261,7 +264,17 @@ func (s *server) snapshot(ctx context.Context) Snapshot {
   out.ObservedAt["Argo CD"] = time.Now().UTC().Format(time.RFC3339)
 	}
 	for _, a := range apps.Items {
-		out.Apps = append(out.Apps, App{Name: a.Metadata.Name, Namespace: a.Spec.Destination.Namespace, Health: a.Status.Health.Status, Sync: a.Status.Sync.Status, Resources: a.Status.Resources})
+  var latest time.Time
+  for _, revision := range a.Status.History {
+   if revision.DeployedAt.After(latest) {
+    latest = revision.DeployedAt
+   }
+  }
+  lastSync := ""
+  if !latest.IsZero() {
+   lastSync = latest.UTC().Format(time.RFC3339)
+  }
+		out.Apps = append(out.Apps, App{Name: a.Metadata.Name, Namespace: a.Spec.Destination.Namespace, Health: a.Status.Health.Status, Sync: a.Status.Sync.Status, Resources: a.Status.Resources, LastSync: lastSync})
 	}
 	out.MonitorsUp = s.scalar(ctx, `sum(monitor_status == bool 1)`)
 	out.MonitorsTotal = s.scalar(ctx, `count(monitor_status)`)
