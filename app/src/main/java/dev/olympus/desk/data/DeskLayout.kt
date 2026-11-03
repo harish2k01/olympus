@@ -7,8 +7,8 @@ object DeskLayout {
  val kinds=listOf("Clock","Attention","CPU","Memory","Nodes","Monitors","GitOps","Downloads","Backups","Events","Alerts","Service","App","Node")
  fun defaults(wide:Boolean=true):List<DeskWidget> {
   fun w(kind:String,x:Int,y:Int,width:Int=2,height:Int=1)=DeskWidget("home-$kind",kind,width=width,height=height,x=x,y=y)
-  return if(wide)listOf(w("Clock",0,0,height=2),w("Attention",2,0,width=4),w("GitOps",6,0),w("CPU",2,1,width=3),w("Memory",5,1,width=3),w("Nodes",0,2,width=4),w("Monitors",4,2),w("Events",6,2))
-   else listOf(w("Attention",0,0,width=4),w("Clock",0,1,height=2),w("GitOps",2,1),w("Nodes",2,2),w("CPU",0,3),w("Memory",2,3),w("Monitors",0,4,width=4),w("Events",0,5,width=4))
+  return if(wide)listOf(w("CPU",0,0,width=4),w("Memory",4,0,width=4),w("Nodes",0,1,width=4,height=2),w("Monitors",4,1,width=4),w("GitOps",4,2,width=4))
+   else listOf(w("CPU",0,0),w("Memory",2,0),w("Nodes",0,1,width=4,height=2),w("Monitors",0,3),w("GitOps",2,3))
  }
 
  fun encode(items:List<DeskWidget>)=JSONArray().apply{items.forEach{w->put(JSONObject().put("id",w.id).put("kind",w.kind).put("target",w.target).put("width",w.width).put("height",w.height).put("label",w.label).put("fields",JSONArray(w.fields)).put("x",w.x).put("y",w.y))}}.toString()

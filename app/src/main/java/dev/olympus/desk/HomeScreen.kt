@@ -520,7 +520,14 @@ private val iconCache=android.util.LruCache<String,android.graphics.Bitmap>(40)
  Column(modifier.fillMaxSize(),verticalArrangement=Arrangement.spacedBy(2.dp)){
   Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween){Text(w.label.ifBlank{w.kind},color=Muted,fontSize=12.sp);if(w.width>2)Text(if(!LiveRepository.state.startsWith("Live"))"Cached"else"Recent",color=Muted,fontSize=10.sp)}
   Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(8.dp)){
-   Text(if(value==null)"—"else"${value.fmt()}%",color=Paper,fontSize=if(w.width<2)20.sp else 26.sp,lineHeight=29.sp,fontWeight=FontWeight.SemiBold)
+   Box(Modifier.size(58.dp), contentAlignment=Alignment.Center){
+    Canvas(Modifier.fillMaxSize().padding(4.dp)){
+     val stroke = androidx.compose.ui.graphics.drawscope.Stroke(5.dp.toPx(),cap=androidx.compose.ui.graphics.StrokeCap.Round)
+     drawCircle(Color(0xFF2B3040),style=stroke)
+     if(value != null && value > 0) drawArc(if(cpu)Cobalt else Lilac,-90f,value.coerceIn(0f,100f)*3.6f,false,style=stroke)
+    }
+   Text(if(value==null)"—"else"${value.fmt()}%",color=Paper,fontSize=13.sp,lineHeight=16.sp,fontWeight=FontWeight.SemiBold)
+   }
    if(w.width>=2)Text(if(cpu)if(value==null)"Usage unavailable"else"${(value/100f*LiveRepository.totalCores).fmt()} / ${LiveRepository.totalCores} cores"else"${LiveRepository.usedMemory.fmt()} / ${LiveRepository.totalMemory.fmt()} GiB",color=Muted,fontSize=10.sp,lineHeight=12.sp,maxLines=2)
   }
   if(values.size<2)Text("Collecting trend…",color=Muted,fontSize=10.sp)else Canvas(Modifier.fillMaxWidth().weight(1f).heightIn(min=12.dp).semantics{contentDescription="${w.kind} recent samples, zero to one hundred percent"}){
