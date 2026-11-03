@@ -50,7 +50,7 @@ class AlertWatchService:Service(){
       withContext(Dispatchers.IO){try{val file=java.io.File(filesDir,"last-frame.tmp");file.writeText(frame);file.renameTo(java.io.File(filesDir,"last-frame.json"))}catch(_:Exception){}}
      }
     }catch(e:CancellationException){throw e}catch(_:Exception){LiveRepository.unavailable()}
-    manager.notify(41,ongoing("Disconnected · retrying"));delay(retry);retry=(retry*2).coerceAtMost(30000)
+    manager.notify(41,ongoing("Disconnected · retrying"));LiveRepository.awaitRetry(retry);retry=(retry*2).coerceAtMost(30000)
    }
   }
   return START_NOT_STICKY
