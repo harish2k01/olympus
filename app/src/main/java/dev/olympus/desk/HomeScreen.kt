@@ -111,29 +111,44 @@ private fun stamp(value:String)=try{DateTimeFormatter.ofPattern("dd MMM · HH:mm
  var dim by remember{mutableFloatStateOf(prefs.getFloat("brightness",.7f))}
  var reducedMotion by remember{mutableStateOf(prefs.getBoolean("reducedMotion",false))}
  var dimMode by remember{mutableStateOf(prefs.getBoolean("deskMode",false))}
- var dockShown by remember{mutableStateOf(true)}
- var lastInteraction by remember{mutableLongStateOf(System.currentTimeMillis())}
  var keepAwake by remember{mutableStateOf(prefs.getBoolean("keepAwake",true))}
  var showTests by remember{mutableStateOf(prefs.getBoolean("showTests",false))}
  var dockSeconds by remember{mutableIntStateOf(prefs.getInt("dockSeconds",4))}
  var gridGap by remember{mutableIntStateOf(prefs.getInt("gridGap",10))}
  DisposableEffect(keepAwake){val window=(context as? Activity)?.window;if(keepAwake)window?.addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)else window?.clearFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);onDispose{}}
  var focusMode by remember{mutableStateOf(prefs.getBoolean("focusMode",false))}
- LaunchedEffect(lastInteraction,editing,menu,picker,settings,configuring,dockSeconds,detail,tab){dockShown=true;if(tab=="Home"&&detail.isBlank()&&!editing&&!menu&&!picker&&!settings&&configuring==null){delay(dockSeconds*1000L);dockShown=false}}
  var shift by remember{mutableIntStateOf(0)}
  LaunchedEffect(dimMode){while(dimMode){delay(60000);shift=(shift+1)%3}}
  DisposableEffect(dimMode,dim){val window=(context as? Activity)?.window;val old=window?.attributes?.screenBrightness;window?.attributes=window?.attributes?.apply{screenBrightness=if(dimMode)dim else -1f};onDispose{if(old!=null)window?.attributes=window?.attributes?.apply{screenBrightness=old}}}
- val dockVisible by rememberUpdatedState(dockShown)
  fun pin(kind:String,target:String){if(widgets.none{it.kind==kind&&it.target==target})save(widgets+DeskWidget(UUID.randomUUID().toString(),kind,target));message="Pinned to Home"}
  BackHandler(detail.isNotEmpty()||editing){if(detail.isNotEmpty())backDetail() else editing=false}
  CompositionLocalProvider(LocalReducedMotion provides reducedMotion,LocalShowTests provides showTests,LocalGridGap provides gridGap,LocalGridColumns provides gridColumns){
  Surface(color=Ink,modifier=Modifier.fillMaxSize()){
- Box(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.displayCutout).pointerInput(Unit){awaitPointerEventScope{var revealing=false;while(true){val event=awaitPointerEvent(PointerEventPass.Initial);if(event.changes.any{it.pressed&&!it.previousPressed}){revealing=!dockVisible;lastInteraction=System.currentTimeMillis()};if(revealing)event.changes.forEach{it.consume()};if(event.changes.none{it.pressed})revealing=false}}}){
- Column(Modifier.fillMaxSize().padding(horizontal=16.dp).offset(x=if(dimMode)shift.dp else 0.dp)){
-  AnimatedVisibility(visible=detail.isNotBlank()||tab!="Home"||!focusMode||dockShown||editing){
+ Row(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.displayCutout)){
+ val destinations = listOf("Home" to "Home", "Cluster" to "Nodes", "Services" to "Apps", "Inbox" to "Events")
+ val navigate: (String) -> Unit = {
+  tab=it
+  detail=""
+  detailHistory=arrayListOf()
+  editing=false
+ }
+ if(wide&&!editing) Column(
+  Modifier.width(84.dp).fillMaxHeight().background(Card),
+  verticalArrangement=Arrangement.Center
+ ){
+  destinations.forEach { (destination, icon) ->
+   NavigationRailItem(
+    selected=tab==destination,
+    onClick={navigate(destination)},
+    icon={LabGlyph(icon,if(tab==destination)Cobalt else Muted,22.dp)},
+    label={Text(destination,color=if(tab==destination)Paper else Muted)}
+   )
+  }
+ }
+ Column(Modifier.weight(1f).fillMaxHeight().padding(horizontal=14.dp).offset(x=if(dimMode)shift.dp else 0.dp)){
   Row(Modifier.fillMaxWidth().height(44.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(8.dp)){
    if(detail.isNotEmpty())TextButton(onClick={backDetail()},modifier=Modifier.size(40.dp),contentPadding=PaddingValues(0.dp)){LabGlyph("Back",Paper,23.dp)}else Box(Modifier.size(30.dp).clip(RoundedCornerShape(10.dp)).background(Color(0xFF4A63EA)),contentAlignment=Alignment.Center){LabGlyph("Brand",Paper,22.dp)}
-   Text(if(detail.isEmpty())if(tab=="Home")"olympus"else tab else routeTitle(detail),fontSize=18.sp,fontWeight=FontWeight.SemiBold,color=Paper,maxLines=1,overflow=TextOverflow.Ellipsis,modifier=Modifier.widthIn(max=if(wide)350.dp else 145.dp))
+   Text(if(detail.isEmpty())if(tab=="Home")"olympus"else tab else if(detail.startsWith("event:")&&selectedEvent?.id==detail.substringAfter(":"))incidentTitle(selectedEvent!!)else routeTitle(detail),fontSize=18.sp,fontWeight=FontWeight.SemiBold,color=Paper,maxLines=1,overflow=TextOverflow.Ellipsis,modifier=Modifier.widthIn(max=if(wide)350.dp else 145.dp))
    if(detail.isEmpty()&&!editing)LiveStatus(reducedMotion)
    Spacer(Modifier.weight(1f))
 
@@ -142,14 +157,12 @@ private fun stamp(value:String)=try{DateTimeFormatter.ofPattern("dd MMM · HH:mm
    else Row{if(detail.isEmpty()&&tab=="Home"&&!compactHeader)IconButton(onClick={if(tab!="Home"||detail.isNotBlank()){tab="Home";detail=""};editing=!editing},modifier=Modifier.size(38.dp)){LabGlyph("Edit",Muted,20.dp)};if(detail.isEmpty()&&!compactHeader)IconButton(onClick={settings=true},modifier=Modifier.size(38.dp)){LabGlyph("Settings",Muted,21.dp)};Box{
     IconButton(onClick={menu=true},modifier=Modifier.size(38.dp)){Text("•••",color=Muted)}
     DeskPopup(menu,{menu=false},if(detail.isNotBlank())listOf("Copy reference" to {(context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager).setPrimaryClip(ClipData.newPlainText("Olympus resource",detail));message="Reference copied"})else listOf(
-     (if(focusMode)"Leave focus mode"else"Focus mode") to {focusMode=!focusMode;prefs.edit().putBoolean("focusMode",focusMode).apply()},
      "Edit Home" to {tab="Home";detail="";editing=true},
      "Add widget" to {tab="Home";detail="";picker=true},
      "Export layout" to {(context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager).setPrimaryClip(ClipData.newPlainText("Olympus layout",DeskLayout.encode(widgets)));message="Layout copied"},
      "Import layout" to {importLayout=true},
      "Restore previous layout" to {val old=prefs.getString(if(wide)"landscape-v6"else"portrait-v6",null);if(old!=null)try{save(DeskLayout.decode(old));gridColumns=if(wide)6 else 4;if(wide)prefs.edit().putInt("landscape-columns-v7",6).apply();message="Previous layout restored"}catch(_:Exception){message="Previous layout unavailable"}else message="No previous layout"},"Settings" to {settings=true}))
    }}
-  }
   }
   if(message.isNotEmpty()){Text(message,color=Mint,fontSize=12.sp);LaunchedEffect(message){delay(2200);message=""}}
   BoxWithConstraints(Modifier.weight(1f)){val viewport=maxHeight
@@ -163,7 +176,7 @@ private fun stamp(value:String)=try{DateTimeFormatter.ofPattern("dd MMM · HH:mm
      page.startsWith("integration:")->IntegrationDetailScreen(page.removePrefix("integration:")){target->detailHistory=ArrayList(detailHistory+detail);detail=target}
      page.startsWith("node:")->NodeDetailScreen(page.substringAfter(":")){target->detailHistory=ArrayList(detailHistory+detail);detail=target}
      page.startsWith("app:")->ApplicationScreen(page.substringAfter(":")){target->detailHistory=ArrayList(detailHistory+detail);detail=target}
-     page.startsWith("event:")->EventRoute(page.substringAfter(":"),selectedEvent){target->detailHistory=ArrayList(detailHistory+detail);detail=target}
+     page.startsWith("event:")->EventRoute(page.substringAfter(":"),selectedEvent,{selectedEvent=it}){target->detailHistory=ArrayList(detailHistory+detail);detail=target}
      page=="Attention"->{Title("Needs attention");if(LiveRepository.issues.isEmpty())Text("No current issues",color=Mint);LiveRepository.issues.forEach{item->Column(Modifier.fillMaxWidth().padding(bottom=10.dp).clip(RoundedCornerShape(16.dp)).background(Card).clickable{detail=item.target}.padding(16.dp)){Text(item.title,color=Paper,fontSize=14.sp);Text(item.severity,color=Apricot,fontSize=11.sp)}}}
      page=="Backups"-> {Title("Backups");Info("Destination",when(LiveRepository.backup){true->"Available";false->"Unavailable";null->"Unknown"});Info("Volumes with backup records",if(LiveRepository.backupVolumes==null)"Unavailable"else"${LiveRepository.backupRecorded} / ${LiveRepository.backupVolumes}");Info("Last recorded backup",LiveRepository.backupLast.ifEmpty{"None recorded"})}
      page=="Cluster"->{CompactTabs(listOf("Nodes","Applications"),clusterSection,{clusterSection=it});if(clusterSection=="Nodes")Nodes{detail="node:$it"}else Apps{detail="app:$it"}}
@@ -174,8 +187,14 @@ private fun stamp(value:String)=try{DateTimeFormatter.ofPattern("dd MMM · HH:mm
      page=="Apps"->Apps{detail="app:$it"}
      page=="Monitors"->MonitorScreen{detail="monitor:$it"}
      else->{
+      if(!editing) HomeVerdict { incident ->
+       tab="Inbox"
+       selectedEvent=incident
+       detail="event:${incident.id}"
+       detailHistory=arrayListOf()
+      }
       val selected=widgets.find{it.id==selectedWidgetId}?:widgets.firstOrNull()
-      @Composable fun canvas(){WidgetGrid(widgets,wide,editing,selected?.id.orEmpty(),reducedMotion,(viewport-12.dp).coerceAtLeast(0.dp),wide&&!editing,{editing=true},::save,{destination->when(destination){"Nodes","Apps"->{tab="Cluster";clusterSection=if(destination=="Nodes")"Nodes"else"Applications"};"Monitors"->{tab="Services";servicesSection="Monitors"};"Events","Attention"->tab="Inbox";else->detail=destination}},{selectedWidgetId=it.id})}
+      @Composable fun canvas(){WidgetGrid(widgets,wide,editing,selected?.id.orEmpty(),reducedMotion,(viewport-108.dp).coerceAtLeast(0.dp),wide&&!editing,{editing=true},::save,{destination->when(destination){"Nodes","Apps"->{tab="Cluster";clusterSection=if(destination=="Nodes")"Nodes"else"Applications"};"Monitors"->{tab="Services";servicesSection="Monitors"};"Events","Attention"->tab="Inbox";else->detail=destination}},{selectedWidgetId=it.id})}
       if(editing&&wide)Row(horizontalArrangement=Arrangement.spacedBy(16.dp)){
        Box(Modifier.weight(1f)){canvas()}
        Column(Modifier.width(244.dp)){selected?.let{EditorInspector(it,widgets,wide,::save,{configuring=it},{save(widgets.filterNot{w->w.id==it.id})})}}
@@ -187,9 +206,17 @@ private fun stamp(value:String)=try{DateTimeFormatter.ofPattern("dd MMM · HH:mm
  }
 
 
- AnimatedVisibility(visible=dockShown&&!editing){Box(Modifier.fillMaxWidth().padding(bottom=8.dp),contentAlignment=Alignment.Center){FloatingDock(when{detail.startsWith("node:")||detail.startsWith("app:")||detail.startsWith("pod:")->"Cluster";detail.startsWith("event:")||detail.startsWith("events-")->"Inbox";detail=="Monitors"||detail.startsWith("monitor:")||detail.startsWith("integration:")->"Services";else->tab}){tab=it;detail="";detailHistory=arrayListOf();editing=false;lastInteraction=System.currentTimeMillis()}}}
+ if(!wide&&!editing) NavigationBar(containerColor=Card){
+  destinations.forEach { (destination, icon) ->
+   NavigationBarItem(
+    selected=tab==destination,
+    onClick={navigate(destination)},
+    icon={LabGlyph(icon,if(tab==destination)Cobalt else Muted,22.dp)},
+    label={Text(destination,color=if(tab==destination)Paper else Muted)}
+   )
+  }
  }
- if(!dockShown&&!editing)Box(Modifier.align(Alignment.BottomCenter).fillMaxWidth().height(14.dp).clickable{lastInteraction=System.currentTimeMillis()},contentAlignment=Alignment.Center){Box(Modifier.size(38.dp,3.dp).background(Muted.copy(alpha=.4f),RoundedCornerShape(4.dp)))}
+ }
  }
  }
  }
@@ -206,6 +233,45 @@ private fun stamp(value:String)=try{DateTimeFormatter.ofPattern("dd MMM · HH:mm
    "Reset this layout"->{save(DeskLayout.defaults(wide));gridColumns=if(wide)8 else 4;if(wide)prefs.edit().putInt("landscape-columns-v7",8).apply();tab="Home";detail=""}
   }},{settings=false},focusMode,{focusMode=it})
 
+}
+
+@Composable private fun HomeVerdict(open: (LabEvent) -> Unit) {
+ val state = LiveRepository.state
+ val connected = state.startsWith("Live")
+ val firing = if (connected) LiveRepository.active
+  .filter { it.state == "Firing" }
+  .distinctBy { it.id }
+  .sortedByDescending { it.kind.equals("critical", ignoreCase = true) }
+ else emptyList()
+ val incident = firing.firstOrNull()
+ val verified = state == "Live" && LiveRepository.active.none { it.state == "Unknown" }
+ val headline = when {
+  incident?.kind.equals("critical", ignoreCase = true) -> "Critical"
+  incident != null -> "Needs you"
+  verified -> "All calm"
+  else -> "Can’t confirm"
+ }
+ val summary = when {
+  incident != null -> "${firing.size} firing • ${incidentTitle(incident)}"
+  verified -> "No firing incidents"
+  else -> state
+ }
+ val accent = if (incident != null) Apricot else if (verified) Cobalt else Muted
+ Row(
+  Modifier.fillMaxWidth().padding(bottom=8.dp)
+   .clip(RoundedCornerShape(24.dp)).background(Card).padding(horizontal=16.dp, vertical=10.dp),
+  verticalAlignment=Alignment.CenterVertically,
+  horizontalArrangement=Arrangement.spacedBy(12.dp)
+ ) {
+  Column(Modifier.weight(1f)) {
+   Text(headline, color=accent, fontSize=26.sp, fontWeight=FontWeight.Bold)
+   Text(summary, color=Paper, fontSize=13.sp, maxLines=2, overflow=TextOverflow.Ellipsis)
+   if (incident != null && !verified) Text("Partial data", color=Muted, fontSize=12.sp)
+  }
+  if (incident != null) TextButton(onClick={open(incident)}, modifier=Modifier.heightIn(min=44.dp)) {
+   Text("View incident", color=accent)
+  }
+ }
 }
 
 @Composable private fun LiveStatus(reduced:Boolean){

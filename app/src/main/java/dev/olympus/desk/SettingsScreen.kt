@@ -76,9 +76,7 @@ internal val LocalGridGap=staticCompositionLocalOf{10}
          @Composable fun navigation(){Column(verticalArrangement=Arrangement.spacedBy(8.dp)){
           SettingsHeading("Navigation")
           SettingsGroup{
-           SettingSwitch("Focus mode",focus){bool("focusMode",it,setFocus)}
            Text("Hide Home header when idle · touch to reveal",color=DeskColors.muted,fontSize=11.sp,modifier=Modifier.padding(horizontal=12.dp,vertical=8.dp))
-           SettingsDivider();SettingsRange("Home dock hide delay","${dock}s",dock.toFloat(),2f..15f,12){val n=it.toInt();prefs.edit().putInt("dockSeconds",n).apply();setDock(n)}
           }
          }}
          if(wideWindow())Row(horizontalArrangement=Arrangement.spacedBy(14.dp)){Box(Modifier.weight(1f)){screen()};Box(Modifier.weight(1f)){navigation()}}else{screen();navigation()}

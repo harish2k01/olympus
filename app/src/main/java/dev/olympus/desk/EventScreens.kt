@@ -89,7 +89,10 @@ private fun groupingKey(e:LabEvent)=listOf(e.source,e.title,e.detail,e.kind)
  }
 
  @Composable fun measurements(){Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(DeskColors.surface).padding(12.dp),verticalArrangement=Arrangement.spacedBy(6.dp)){
-  Text(listOf(event.namespace,event.pod,event.container).filter{it.isNotBlank()}.joinToString(" / ").ifBlank{event.resource.ifBlank{"Resource not reported"}},color=EventPaper,fontSize=13.sp)
+  Text(listOf(event.namespace,event.pod,event.container).filter{it.isNotBlank()}.joinToString(" / ").ifBlank{event.resource.ifBlank{incidentTitle(event)}},color=EventPaper,fontSize=13.sp)
+  val message=data?.optString("message").orEmpty().ifBlank{data?.optString("description").orEmpty()}.ifBlank{data?.optString("msg").orEmpty()}
+  if(message.isNotBlank()&&message!=event.title)Text(message,color=EventMuted,fontSize=12.sp)
+  listOf("movie","series","episode","release","monitor","heartbeat").forEach{key->data?.optJSONObject(key)?.let{item->val summary=item.keys().asSequence().mapNotNull{field->item.opt(field)?.takeIf{it is String||it is Number||it is Boolean}?.let{"$field · $it"}}.take(6).joinToString(" · ");if(summary.isNotBlank())Text(summary,color=EventMuted,fontSize=12.sp)}}
   event.throttledPeriodsPercent?.let{Row(verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(12.dp)){Text("${String.format(java.util.Locale.US,"%.1f%%",it)}",color=EventPaper,fontSize=26.sp);Text("Last reported throttled periods",color=EventMuted,fontSize=11.sp)}}
   if(event.cpuLimit.isNotBlank())Text("CPU limit · ${event.cpuLimit}",color=EventMuted,fontSize=12.sp)
   if(resolved)Text("Resolved · ${localTime(event.resolvedAt.ifBlank{event.lastSeen})}",color=DeskColors.green,fontSize=12.sp)
@@ -121,11 +124,12 @@ private fun groupingKey(e:LabEvent)=listOf(e.source,e.title,e.detail,e.kind)
 
 private fun cleanEventMessage(message:String)=message.replace(Regex("(?i)Response body:\\s*$"),"").trim()
 
-@Composable internal fun EventRoute(id:String,fallback:LabEvent?,open:(String)->Unit){
+@Composable internal fun EventRoute(id:String,fallback:LabEvent?,resolved:(LabEvent)->Unit={},open:(String)->Unit){
  val context=LocalContext.current
  val current=(LiveRepository.active+LiveRepository.events).find{it.id==id}?:fallback?.takeIf{it.id==id}
  var retained by remember(id){mutableStateOf<LabEvent?>(null)};var failed by remember(id){mutableStateOf(false)};var retry by remember{mutableIntStateOf(0)}
  LaunchedEffect(id,retry){if(current==null){failed=false;try{val pair=Pairing.read(context)?:error("Not paired");retained=withContext(Dispatchers.IO){LiveRepository.event(JSONObject(LiveRepository.request(pair,"/v1/events/item?id="+java.net.URLEncoder.encode(id,"UTF-8"))))}}catch(e:CancellationException){throw e}catch(_:Exception){failed=true}}}
  val event=current?:retained
+ LaunchedEffect(event){event?.let(resolved)}
  if(event!=null)NotificationDetail(event,open)else if(failed){DeskEmpty("Record unavailable","It may have expired, or the backend is unreachable.");DeskAction("Retry"){retry++}}else Text("Loading incident…",color=DeskColors.muted)
 }
