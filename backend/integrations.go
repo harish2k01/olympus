@@ -27,13 +27,20 @@ type IntegrationHealth struct {
 	WikiURL string `json:"wikiUrl,omitempty"`
 }
 
+type IntegrationQueueItem struct {
+	Title    string   `json:"title"`
+	Status   string   `json:"status"`
+	Progress *float64 `json:"progress,omitempty"`
+}
+
 type IntegrationState struct {
-	Health []IntegrationHealth `json:"health"`
-	Name   string              `json:"name"`
-	Kind   string              `json:"kind"`
-	Fields map[string]*float64 `json:"fields"`
-	Time   string              `json:"time"`
-	Error  string              `json:"error,omitempty"`
+	Queue  []IntegrationQueueItem `json:"queue"`
+	Health []IntegrationHealth    `json:"health"`
+	Name   string                 `json:"name"`
+	Kind   string                 `json:"kind"`
+	Fields map[string]*float64    `json:"fields"`
+	Time   string                 `json:"time"`
+	Error  string                 `json:"error,omitempty"`
 }
 
 func (s *server) loadIntegrations() {
@@ -129,7 +136,33 @@ func collectService(ctx context.Context, c IntegrationConfig) IntegrationState {
 		count("Indexers", "/api/v1/indexer", false)
 
 	} else {
-		count("Queued", "/api/v3/queue?pageSize=1", true)
+		var queue struct {
+			TotalRecords *float64
+			Records      []struct {
+				Title, Status  string
+				Size, SizeLeft *float64
+			}
+		}
+		if err := get("/api/v3/queue?pageSize=10", &queue); err != nil || queue.TotalRecords == nil {
+			out.Error = "Some fields unavailable"
+			out.Fields["Queued"] = nil
+		} else {
+			out.Fields["Queued"] = queue.TotalRecords
+			out.Queue = []IntegrationQueueItem{}
+			for _, record := range queue.Records[:min(len(queue.Records), 10)] {
+				title := record.Title
+				if c.Token != "" {
+					title = strings.ReplaceAll(title, c.Token, "[redacted]")
+				}
+				chars := []rune(title)
+				item := IntegrationQueueItem{Title: string(chars[:min(len(chars), 240)]), Status: record.Status}
+				if record.Size != nil && record.SizeLeft != nil && *record.Size > 0 && *record.SizeLeft >= 0 && *record.SizeLeft <= *record.Size {
+					percent := 100 * (1 - *record.SizeLeft / *record.Size)
+					item.Progress = &percent
+				}
+				out.Queue = append(out.Queue, item)
+			}
+		}
 		count("Wanted", "/api/v3/wanted/missing?pageSize=1", true)
 		if c.Kind == "sonarr" {
 			count("Series", "/api/v3/series", false)
