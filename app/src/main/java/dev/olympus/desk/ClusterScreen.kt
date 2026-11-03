@@ -96,13 +96,22 @@ private fun ClusterNodes(open: (String) -> Unit) {
    ) {
     Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
      Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(5.dp)) {
-      Text(node.name, color = DeskColors.text, fontSize = 13.sp, fontWeight = FontWeight.SemiBold,
+      Text(node.name, color = DeskColors.text, fontSize = 14.sp, fontWeight = FontWeight.SemiBold,
        maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
       VerdictMark(verdict, 11.dp)
       Spacer(Modifier.weight(1f))
-      Text(if (cpu == null && memory == null) "Usage unavailable"
-       else "CPU ${clusterPercentage(cpu)} · MEM ${clusterPercentage(memory)}",
-       color = DeskColors.muted, fontSize = 12.sp, maxLines = 1)
+      val columnWidth = with(androidx.compose.ui.platform.LocalDensity.current) { 60.sp.toDp() }
+      val valueColor = DeskColors.text
+      listOf("CPU" to cpu, "MEM" to memory).forEach { (label, value) ->
+       Text(androidx.compose.ui.text.buildAnnotatedString {
+        append("$label ")
+        pushStyle(androidx.compose.ui.text.SpanStyle(fontSize = 14.sp, color = valueColor))
+        append(clusterPercentage(value))
+        pop()
+       }, Modifier.width(columnWidth),
+        color = DeskColors.muted, fontSize = 12.sp, maxLines = 1,
+        textAlign = androidx.compose.ui.text.style.TextAlign.End)
+      }
      }
      Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
       ClusterResourceBar(cpu, Modifier.weight(1f))

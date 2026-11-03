@@ -59,7 +59,7 @@ internal fun historyEdges(points:List<MetricSample>,step:Long):List<Pair<MetricS
    frame=HistoricalFrame(json.getLong("start"),json.getLong("end"),json.getLong("step"),series)
   }catch(e:CancellationException){throw e}catch(_:Exception){failed=true}finally{loading=false}
  }
- if (clusterMetric != null) {
+ @Composable fun filters() {
   Row(Modifier.fillMaxWidth().padding(bottom = 4.dp).horizontalScroll(rememberScrollState()),
    horizontalArrangement = Arrangement.spacedBy(8.dp)) {
    changeClusterMetric?.let { select ->
@@ -71,11 +71,14 @@ internal fun historyEdges(points:List<MetricSample>,step:Long):List<Pair<MetricS
    }
   }
  }
+ val filtersInsideCard = wideWindow() && openExpanded != null
+ if (clusterMetric != null && !filtersInsideCard) filters()
  val expandedCluster = clusterMetric != null && openExpanded == null
  Column(Modifier.fillMaxWidth().padding(vertical=4.dp).clip(RoundedCornerShape(if (clusterMetric == null) 18.dp else 24.dp))
   .background(DeskColors.surface).padding(if (clusterMetric == null) 10.dp else 14.dp),
   verticalArrangement=Arrangement.spacedBy(5.dp)){
   if (clusterMetric != null) {
+   if (filtersInsideCard) filters()
    val cpu = clusterMetric == "cpu"
    val current = if (cpu) LiveRepository.cpuPercent else LiveRepository.memoryPercent
    val cached = current != null && !LiveRepository.state.startsWith("Live")

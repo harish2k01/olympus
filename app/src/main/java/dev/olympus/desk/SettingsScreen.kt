@@ -424,10 +424,9 @@ internal fun ServicesTabs(selected: String, select: (String) -> Unit) {
  }
 }
 
-@Composable internal fun MonitorScreen(preview: Boolean = false, open: (String) -> Unit = {}) {
+@Composable internal fun MonitorScreen(open: (String) -> Unit = {}) {
  var search by rememberSaveable { mutableStateOf("") }
  var status by rememberSaveable { mutableStateOf("All") }
- var showAll by rememberSaveable { mutableStateOf(!preview) }
  val monitors = LiveRepository.monitors
  if (monitors.isEmpty()) {
   DeskEmpty("Monitor readings unavailable")
@@ -448,13 +447,19 @@ internal fun ServicesTabs(selected: String, select: (String) -> Unit) {
   if (other.isNotEmpty()) Text(other.entries.joinToString(" · ") { "${it.value} ${it.key.lowercase()}" },
    color = DeskColors.muted, fontSize = 12.sp)
  }
- if (showAll) DeskDisclosure("Filter monitors") {
+
   DeskSearch(search, { search = it }, "Search monitors")
   DeskSegments(listOf("All", "Up", "Down", "Unknown", "Pending", "Maintenance"), status, { status = it })
- }
  CompanionPanel("Uptime Kuma") {
   val matches = monitors.filter { it.name.contains(search, true) && (status == "All" || it.status == status) }
-  val rows = if (showAll) matches else matches.sortedBy { if (it.status == "Down") 0 else 1 }.take(4)
+  val rows = matches.sortedBy {
+   when (it.status) {
+    "Down" -> 0
+    "Unknown" -> 1
+    "Up" -> 3
+    else -> 2
+   }
+  }
   if (rows.isEmpty()) Text("No matching monitors", color = DeskColors.muted, fontSize = 13.sp)
   rows.forEachIndexed { index, monitor ->
    if (index > 0) HorizontalDivider(color = DeskColors.raised)
@@ -470,12 +475,6 @@ internal fun ServicesTabs(selected: String, select: (String) -> Unit) {
      color = if (monitor.status == "Down") DeskColors.apricot else DeskColors.text,
      fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
    }
-  }
- }
- if (preview) {
-  if (monitors.size > 4) DeskAction(if (showAll) "Show fewer monitors" else "Show all monitors") {
-   showAll = !showAll
-   if (!showAll) { search = ""; status = "All" }
   }
  }
 }

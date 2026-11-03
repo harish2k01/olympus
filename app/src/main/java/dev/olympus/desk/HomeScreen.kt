@@ -262,7 +262,7 @@ private fun stamp(value:String)=try{DateTimeFormatter.ofPattern("dd MMM · HH:mm
       openHistory = { metric, range -> detail = "cluster-history:$metric@$range" },
       openNode = { detail = "node:$it" }
      )
-     page=="Services"->{ServicesTabs(if (servicesSection == "Monitors") "Monitors" else "Integrations") { servicesSection = it };if(servicesSection=="Monitors")MonitorScreen(preview=true){detail="monitor:$it"}else IntegrationDirectory(openArgo={detail="Apps"}){detail="integration:$it"}}
+     page=="Services"->{ServicesTabs(if (servicesSection == "Monitors") "Monitors" else "Integrations") { servicesSection = it };if(servicesSection=="Monitors")MonitorScreen{detail="monitor:$it"}else IntegrationDirectory(openArgo={detail="Apps"}){detail="integration:$it"}}
      page=="Inbox"->NotificationInbox{selectedEvent=it;detail="event:${it.id}"}
      page=="Nodes"->Nodes{detail="node:$it"}
      page=="Events"->NotificationInbox{selectedEvent=it;detail="event:${it.id}"}
@@ -817,24 +817,28 @@ private val iconCache=android.util.LruCache<String,android.graphics.Bitmap>(40)
 }
 
 @Composable private fun IntegrationDirectory(openArgo: () -> Unit, open: (String) -> Unit) {
- CompanionPanel("Connected tools") {
-  val apps = LiveRepository.services
-  val argoStatus = if (LiveRepository.signals["Argo CD"] == false) "Unavailable"
-   else if (apps.isEmpty()) "No applications reported"
-   else "${apps.count { it.sync == "Synced" }} of ${apps.size} applications synced"
-  val entries = listOf(Triple("Argo CD", argoStatus, openArgo)) +
-   LiveRepository.integrations.filterNot { it.kind in listOf("radarr", "sonarr") }.map { service ->
-    Triple(service.name, if (service.error.isBlank()) "Connected" else "Unavailable", { open(service.name) })
-   }
-  entries.forEachIndexed { index, (name, status, action) ->
-   if (index > 0) HorizontalDivider(color = DeskColors.raised)
-   Row(Modifier.fillMaxWidth().heightIn(min = 52.dp).clickable(onClick = action),
-    verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-    Column(Modifier.weight(1f)) {
-     Text(name, color = Paper, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
-     Text(status, color = Muted, fontSize = 13.sp)
+ Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.TopCenter) {
+  Column(Modifier.widthIn(max = 520.dp).fillMaxWidth()) {
+   CompanionPanel("Connected tools") {
+    val apps = LiveRepository.services
+    val argoStatus = if (LiveRepository.signals["Argo CD"] == false) "Unavailable"
+     else if (apps.isEmpty()) "No applications reported"
+     else "${apps.count { it.sync == "Synced" }} of ${apps.size} applications synced"
+    val entries = listOf(Triple("Argo CD", argoStatus, openArgo)) +
+     LiveRepository.integrations.filterNot { it.kind in listOf("radarr", "sonarr") }.map { service ->
+      Triple(service.name, if (service.error.isBlank()) "Connected" else "Unavailable", { open(service.name) })
+     }
+    entries.forEachIndexed { index, (name, status, action) ->
+     if (index > 0) HorizontalDivider(color = DeskColors.raised)
+     Row(Modifier.fillMaxWidth().heightIn(min = 52.dp).clickable(onClick = action),
+      verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+      Column(Modifier.weight(1f)) {
+       Text(name, color = Paper, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+       Text(status, color = Muted, fontSize = 13.sp)
+      }
+      Text("›", color = Muted, fontSize = 22.sp)
+     }
     }
-    Text("›", color = Muted, fontSize = 22.sp)
    }
   }
  }
