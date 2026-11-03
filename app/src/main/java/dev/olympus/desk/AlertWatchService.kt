@@ -36,6 +36,7 @@ class AlertWatchService:Service(){
     incidentMutes.edit().putLong(id, System.currentTimeMillis() + 3_600_000L).apply()
     manager.cancel(id.hashCode())
    }
+   if (watcher?.isActive != true) stopSelf(startId)
    return START_NOT_STICKY
   }
   if(intent?.action=="stop"||!prefs.getBoolean("backgroundAlerts",false)){prefs.edit().putBoolean("backgroundAlerts",false).apply();stopSelf();return START_NOT_STICKY}
@@ -72,7 +73,7 @@ class AlertWatchService:Service(){
          "notices" -> prefs.getBoolean("appNotifications", true)
          else -> true
         }
-        enabled && (sources == null || event.source in sources) && shouldNotifyNow(quiet, (mutes[event.id] as? Long ?: 0L) > now, channel == "critical")
+        enabled && (sources == null || event.source in sources) && shouldNotifyNow(quiet, incidentIsSilenced(event.id, mutes, now), channel == "critical")
        }
        eligible.take(10).forEach{event->
         val detail=listOf(event.node,event.namespace,event.pod).filter{it.isNotBlank()}.joinToString(" · ")
@@ -85,7 +86,7 @@ class AlertWatchService:Service(){
          .addAction(Notification.Action.Builder(null,"Silence 1 h",silence).build()).setSmallIcon(R.drawable.ic_stat_olympus).setContentTitle(incidentTitle(event)).setContentText("${event.source} · ${event.state}"+if(detail.isBlank())""else" · $detail").setContentIntent(content(event.id)).setAutoCancel(true).setOnlyAlertOnce(true).setGroup("olympus-incidents").build()
         manager.notify(event.id.hashCode(),notification)
        }
-       if(eligible.size>10 && prefs.getBoolean("appNotifications",true))manager.notify(42,Notification.Builder(this@AlertWatchService,"notices").setSmallIcon(R.drawable.ic_stat_olympus).setContentTitle("${eligible.size} cluster updates").setContentText("${eligible.size-10} additional updates · open Inbox").setContentIntent(content("-inbox-")).setAutoCancel(true).setGroup("olympus-incidents").setGroupSummary(true).build())
+       if(eligible.size>10 && !quiet && prefs.getBoolean("appNotifications",true))manager.notify(42,Notification.Builder(this@AlertWatchService,"notices").setSmallIcon(R.drawable.ic_stat_olympus).setContentTitle("${eligible.size} cluster updates").setContentText("${eligible.size-10} additional updates · open Inbox").setContentIntent(content("-inbox-")).setAutoCancel(true).setGroup("olympus-incidents").setGroupSummary(true).build())
       }
       events.forEach{seen[it.id]=it.state+"|"+it.kind.lowercase()};if(seen.size>2500){val keep=events.map{it.id}.toSet();seen.keys.retainAll(keep)};seeded=true
       manager.notify(41,ongoing(if(LiveRepository.state.contains("Partial"))"Connected · some sources unavailable"else"Connected · ${LiveRepository.active.count{it.state=="Firing"}} firing"))
@@ -121,3 +122,6 @@ internal fun ensureOlympusNotificationChannels(context: Context) {
 
 internal fun shouldNotifyNow(quiet: Boolean, silenced: Boolean, critical: Boolean): Boolean =
  !silenced && (!quiet || critical)
+
+internal fun incidentIsSilenced(id: String, mutes: Map<String, *>, now: Long): Boolean =
+ (mutes[id] as? Long ?: 0L) > now

@@ -16,4 +16,10 @@ class AlertWatchTest{
   assertFalse(shouldNotifyNow(quiet = true, silenced = false, critical = false))
   assertFalse(shouldNotifyNow(quiet = false, silenced = true, critical = true))
  }
+ @Test fun silenceOnlyAppliesToTheSelectedIncidentUntilExpiry() {
+  val mutes = mapOf("one" to 5_000L)
+  assertTrue(incidentIsSilenced("one", mutes, 4_999L))
+  assertFalse(incidentIsSilenced("two", mutes, 4_999L))
+  assertFalse(incidentIsSilenced("one", mutes, 5_000L))
+ }
 }
