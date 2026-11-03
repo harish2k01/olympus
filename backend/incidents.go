@@ -71,6 +71,23 @@ func incident(id, source, title, detail, domain, resource, now string) Event {
 	return Event{ID: id, Source: source, Title: title, Detail: detail, Kind: "Warning", Time: now, Received: now, State: "Firing", LastSeen: now, Domain: domain, Resource: resource, Evidence: "Confirmed by the latest successful " + domain + " observation"}
 }
 
+func nodeReadinessIncident(node Node, now string) (Event, bool) {
+	if node.Ready {
+		return Event{}, false
+	}
+	e := incident("node:"+node.Name, "Kubernetes", node.Name+" is not ready", "Kubernetes reports Ready=False", "Nodes", node.Name, now)
+	e.Node = node.Name
+	if node.Readiness == "False" {
+		e.Kind = "Critical"
+	} else {
+		e.Title = node.Name + " readiness unconfirmed"
+		e.Detail = "Kubernetes did not report a definite readiness state"
+		e.State = "Unknown"
+		e.Evidence = ""
+	}
+	return e, true
+}
+
 func (s *server) collectIncidents(ctx context.Context, out *Snapshot) {
 	now := out.Time
 	current := []Event{}
@@ -85,8 +102,8 @@ func (s *server) collectIncidents(ctx context.Context, out *Snapshot) {
 		for _, p := range []string{"MemoryPressure", "DiskPressure", "PIDPressure", "NetworkUnavailable"} {
 			complete["resource:node:"+n.Name+":"+p] = true
 		}
-		if !n.Ready {
-			current = append(current, incident("node:"+n.Name, "Kubernetes", n.Name+" is not ready", "Node readiness condition is not True", "Nodes", n.Name, now))
+		if e, needed := nodeReadinessIncident(n, now); needed {
+			current = append(current, e)
 		}
 		for _, p := range n.Pressure {
 			current = append(current, incident("node:"+n.Name+":"+p, "Kubernetes", n.Name+" · "+p, "Node pressure condition is active", "Nodes", n.Name, now))
@@ -109,6 +126,9 @@ func (s *server) collectIncidents(ctx context.Context, out *Snapshot) {
 		} else if m.Status == "Unknown" || m.Status == "Pending" {
 			e := incident("monitor:"+m.ID, "UptimeKuma", m.Name+" · "+m.Status, "Monitor is awaiting a confirmed health reading", "Uptime Kuma", m.Name, now)
 			e.State = "Unknown"
+			if m.Status == "Pending" {
+				e.State = "Pending"
+			}
 			current = append(current, e)
 		}
 	}

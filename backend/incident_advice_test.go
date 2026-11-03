@@ -23,3 +23,16 @@ func TestIncidentAdviceRequiresFiringAndIdentifiedWorkload(t *testing.T) {
 		t.Fatal("advice given without a verified target")
 	}
 }
+
+func TestNodeReadinessRequiresAnExplicitFalseForCritical(t *testing.T) {
+	for _, state := range []string{"False", "Unknown", ""} {
+		event, present := nodeReadinessIncident(Node{Name: "apollo", Readiness: state}, "2026-11-03T12:00:00Z")
+		if !present || event.Node != "apollo" || (event.Kind == "Critical") != (state == "False") ||
+			(event.State == "Firing") != (state == "False") {
+			t.Fatalf("misclassified node readiness %q: %+v", state, event)
+		}
+	}
+	if _, present := nodeReadinessIncident(Node{Ready: true, Readiness: "True"}, "2026-11-03T12:00:00Z"); present {
+		t.Fatal("ready node became an incident")
+	}
+}

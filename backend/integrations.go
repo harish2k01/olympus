@@ -20,7 +20,15 @@ type IntegrationConfig struct {
 	URL   string `json:"url"`
 	Token string `json:"token"`
 }
+type IntegrationHealth struct {
+	Source  string `json:"source,omitempty"`
+	Type    string `json:"type,omitempty"`
+	Message string `json:"message"`
+	WikiURL string `json:"wikiUrl,omitempty"`
+}
+
 type IntegrationState struct {
+	Health []IntegrationHealth `json:"health"`
 	Name   string              `json:"name"`
 	Kind   string              `json:"kind"`
 	Fields map[string]*float64 `json:"fields"`
@@ -119,7 +127,7 @@ func collectService(ctx context.Context, c IntegrationConfig) IntegrationState {
 	}
 	if c.Kind == "prowlarr" {
 		count("Indexers", "/api/v1/indexer", false)
-		count("Health issues", "/api/v1/health", false)
+
 	} else {
 		count("Queued", "/api/v3/queue?pageSize=1", true)
 		count("Wanted", "/api/v3/wanted/missing?pageSize=1", true)
@@ -127,6 +135,31 @@ func collectService(ctx context.Context, c IntegrationConfig) IntegrationState {
 			count("Series", "/api/v3/series", false)
 		} else {
 			count("Movies", "/api/v3/movie", false)
+		}
+	}
+	path := "/api/v3/health"
+	if c.Kind == "prowlarr" {
+		path = "/api/v1/health"
+	}
+	var health []IntegrationHealth
+	if err := get(path, &health); err != nil || health == nil {
+		out.Error = "Some fields unavailable"
+		out.Fields["Health issues"] = nil
+	} else {
+		count := float64(len(health))
+		out.Fields["Health issues"] = &count
+		out.Health = health[:min(len(health), 20)]
+		for i := range out.Health {
+			message := []rune(out.Health[i].Message)
+			if c.Token != "" {
+				message = []rune(strings.ReplaceAll(out.Health[i].Message, c.Token, "[redacted]"))
+			}
+			out.Health[i].Message = string(message[:min(len(message), 600)])
+			link, err := url.Parse(out.Health[i].WikiURL)
+			if err != nil || link.Scheme != "https" || link.Hostname() == "" || link.User != nil ||
+				strings.Contains(out.Health[i].WikiURL, c.Token) {
+				out.Health[i].WikiURL = ""
+			}
 		}
 	}
 	if out.Error != "" {

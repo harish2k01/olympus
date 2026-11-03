@@ -28,6 +28,7 @@ type Node struct {
 	Used     *float64 `json:"memoryUsedGiB"`
 	Total    *float64 `json:"memoryTotalGiB"`
 	Ready    bool     `json:"ready"`
+ Readiness string `json:"readiness,omitempty"`
 	Pressure []string `json:"pressure"`
 }
 type Event struct {
@@ -229,6 +230,7 @@ func (s *server) snapshot(ctx context.Context) Snapshot {
 			}
 			if c.Type == "Ready" {
 				node.Ready = c.Status == "True"
+    node.Readiness = c.Status
 			}
 		}
 		for _, a := range n.Status.Addresses {
