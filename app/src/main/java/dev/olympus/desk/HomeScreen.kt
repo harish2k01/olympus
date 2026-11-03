@@ -214,9 +214,8 @@ private fun stamp(value:String)=try{DateTimeFormatter.ofPattern("dd MMM · HH:mm
   } else
   Row(Modifier.fillMaxWidth().height(44.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(8.dp)){
    if(detail.isNotEmpty())TextButton(onClick={backDetail()},modifier=Modifier.size(40.dp),contentPadding=PaddingValues(0.dp)){LabGlyph("Back",Paper,23.dp)}else Box(Modifier.size(30.dp).clip(RoundedCornerShape(10.dp)).background(Color(0xFF4A63EA)),contentAlignment=Alignment.Center){LabGlyph("Brand",Color.White,22.dp)}
-   Text(if(editing)"Edit Home" else if(detail.isEmpty())if(tab=="Home")"Olympus"else tab else if(detail.startsWith("event:")&&selectedEvent?.id==detail.substringAfter(":"))incidentTitle(selectedEvent!!)else routeTitle(detail),fontSize=18.sp,fontWeight=FontWeight.SemiBold,color=Paper,maxLines=1,overflow=TextOverflow.Ellipsis,modifier=Modifier.widthIn(max=if(wide || editing)350.dp else if(compactHeader)112.dp else 180.dp))
+   Text(if(editing)"Edit Home" else if(detail.isEmpty())if(tab=="Home")"Olympus"else tab else if(detail.startsWith("event:")&&selectedEvent?.id==detail.substringAfter(":"))incidentTitle(selectedEvent!!)else routeTitle(detail),fontSize=18.sp,fontWeight=FontWeight.SemiBold,color=Paper,maxLines=1,overflow=TextOverflow.Ellipsis,modifier=Modifier.weight(1f))
    if(detail.isEmpty()&&!editing)LiveStatus()
-   Spacer(Modifier.weight(1f))
 
    if(detail.startsWith("node:")||detail.startsWith("app:"))TextButton(onClick={pin(if(detail.startsWith("node:"))"Node"else"App",detail.substringAfter(":"))}){Text("Pin",color=Cobalt)}
    if(editing){if(previousLayout!=null)TextButton(onClick={val old=previousLayout;val entry=undoHistory.lastOrNull();if(entry!=null&&!entry.startsWith("[")){gridColumns=JSONObject(entry).optInt("columns",gridColumns);if(wide)prefs.edit().putInt("landscape-columns-v7",gridColumns).apply()};undoHistory=ArrayList(undoHistory.dropLast(1));widgets=old;prefs.edit().putString(layoutKey,DeskLayout.encode(old)).apply()}){Text("Undo",color=Cobalt)};TextButton(onClick={picker=true}){Text("+ Widget",color=Cobalt)};TextButton(onClick={editing=false}){Text("Done",color=Mint)}}
@@ -267,11 +266,9 @@ private fun stamp(value:String)=try{DateTimeFormatter.ofPattern("dd MMM · HH:mm
      page=="Backups"-> {Title("Backups");Info("Destination",when(LiveRepository.backup){true->"Available";false->"Unavailable";null->"Unknown"});Info("Volumes with backup records",if(LiveRepository.backupVolumes==null)"Unavailable"else"${LiveRepository.backupRecorded} / ${LiveRepository.backupVolumes}");Info("Last recorded backup",LiveRepository.backupLast.ifEmpty{"None recorded"})}
      page=="Cluster"->ClusterOverview(
       openHistory = { metric, range -> detail = "cluster-history:$metric@$range" },
-      openNode = { detail = "node:$it" },
-      openApp = { detail = "app:$it" },
-      openApps = { detail = "Apps" }
+      openNode = { detail = "node:$it" }
      )
-     page=="Services"->{ServicesTabs(if (servicesSection == "Monitors") "Monitors" else "Apps") { servicesSection = it };if(servicesSection=="Monitors")MonitorScreen(openIntegration={detail="integration:$it"}){detail="monitor:$it"}else IntegrationDirectory{detail="integration:$it"}}
+     page=="Services"->{ServicesTabs(if (servicesSection == "Monitors") "Monitors" else "Integrations") { servicesSection = it };if(servicesSection=="Monitors")MonitorScreen(preview=true){detail="monitor:$it"}else IntegrationDirectory(openArgo={detail="Apps"}){detail="integration:$it"}}
      page=="Inbox"->NotificationInbox{selectedEvent=it;detail="event:${it.id}"}
      page=="Nodes"->Nodes{detail="node:$it"}
      page=="Events"->NotificationInbox{selectedEvent=it;detail="event:${it.id}"}
@@ -288,7 +285,7 @@ private fun stamp(value:String)=try{DateTimeFormatter.ofPattern("dd MMM · HH:mm
       @Composable fun canvas() {
        val cached = LiveRepository.time.isNotBlank() && !LiveRepository.state.startsWith("Live")
        Column(Modifier.alpha(if (cached && !editing) .65f else 1f)) {
-        WidgetGrid(widgets,wide,editing,selected?.id.orEmpty(),reducedMotion,(viewport-12.dp).coerceAtLeast(0.dp),wide&&!editing,{editing=true},::save,{destination->when(destination){"Nodes","Apps"->{tab="Cluster";detail=destination};"Monitors"->{tab="Services";servicesSection="Monitors"};"Events","Attention"->tab="Inbox";else->detail=destination}},{selectedWidgetId=it.id})
+        WidgetGrid(widgets,wide,editing,selected?.id.orEmpty(),reducedMotion,(viewport-12.dp).coerceAtLeast(0.dp),wide&&!editing,{editing=true},::save,{destination->when(destination){"Nodes"->{tab="Cluster";detail=destination};"Apps"->{tab="Services";servicesSection="Integrations";detail=destination};"Monitors"->{tab="Services";servicesSection="Monitors"};"Events","Attention"->tab="Inbox";else->detail=destination}},{selectedWidgetId=it.id})
        }
       }
       if (!editing && wide && widgets == DeskLayout.defaults(true)) {
@@ -303,7 +300,7 @@ private fun stamp(value:String)=try{DateTimeFormatter.ofPattern("dd MMM · HH:mm
         }
         Column(Modifier.weight(1f).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
          DeskHomeTile(widgets.first { it.kind == "Memory" }, Modifier.weight(1f)) { detail = "cluster-history:memory" }
-         DeskHomeTile(widgets.first { it.kind == "GitOps" }, Modifier.weight(1f)) { tab = "Cluster"; detail = "Apps" }
+         DeskHomeTile(widgets.first { it.kind == "GitOps" }, Modifier.weight(1f)) { tab = "Services"; servicesSection = "Integrations"; detail = "Apps" }
         }
         DeskHomeTile(widgets.first { it.kind == "Nodes" }, Modifier.weight(1.1f).fillMaxHeight()) {
          tab = "Cluster"; detail = "Nodes"
@@ -803,13 +800,26 @@ private val iconCache=android.util.LruCache<String,android.graphics.Bitmap>(40)
  }
 }
 
-@Composable private fun IntegrationDirectory(open:(String)->Unit){
- if(LiveRepository.integrations.isEmpty())Text("No integrations available",color=Muted,modifier=Modifier.padding(16.dp))
- LiveRepository.integrations.forEach{service->
-  Column(Modifier.fillMaxWidth().padding(top=10.dp).clip(RoundedCornerShape(18.dp)).background(Card).clickable{open(service.name)}.padding(16.dp),verticalArrangement=Arrangement.spacedBy(8.dp)){
-   Row(verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(10.dp)){AppIcon(LiveRepository.services.find{it.name==service.name}?.icon?:"",service.name);Text(service.name,color=Paper,fontSize=17.sp)}
-   service.fields.entries.chunked(3).forEach{fields->Row(horizontalArrangement=Arrangement.spacedBy(20.dp)){fields.forEach{(field,value)->Column{Text(field,color=Muted,fontSize=11.sp);Text(value?.toInt()?.toString()?:"—",color=Paper,fontSize=20.sp)}}}}
-   if(service.error.isNotBlank())Text("Some fields unavailable",color=Apricot,fontSize=12.sp)
+@Composable private fun IntegrationDirectory(openArgo: () -> Unit, open: (String) -> Unit) {
+ CompanionPanel("Connected tools") {
+  val apps = LiveRepository.services
+  val argoStatus = if (LiveRepository.signals["Argo CD"] == false) "Unavailable"
+   else if (apps.isEmpty()) "No applications reported"
+   else "${apps.count { it.sync == "Synced" }} of ${apps.size} applications synced"
+  val entries = listOf(Triple("Argo CD", argoStatus, openArgo)) +
+   LiveRepository.integrations.filterNot { it.kind in listOf("radarr", "sonarr") }.map { service ->
+    Triple(service.name, if (service.error.isBlank()) "Connected" else "Unavailable", { open(service.name) })
+   }
+  entries.forEachIndexed { index, (name, status, action) ->
+   if (index > 0) HorizontalDivider(color = DeskColors.raised)
+   Row(Modifier.fillMaxWidth().heightIn(min = 52.dp).clickable(onClick = action),
+    verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+    Column(Modifier.weight(1f)) {
+     Text(name, color = Paper, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+     Text(status, color = Muted, fontSize = 13.sp)
+    }
+    Text("›", color = Muted, fontSize = 22.sp)
+   }
   }
  }
 }

@@ -24,9 +24,7 @@ import kotlin.math.roundToInt
 @Composable
 internal fun ClusterOverview(
  openHistory: (String, String) -> Unit,
- openNode: (String) -> Unit,
- openApp: (String) -> Unit,
- openApps: () -> Unit
+ openNode: (String) -> Unit
 ) {
  var metric by rememberSaveable { mutableStateOf("cpu") }
  @Composable fun metricOverview() {
@@ -41,16 +39,13 @@ internal fun ClusterOverview(
   Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
    Column(Modifier.weight(1.15f)) {
     metricOverview()
-    ClusterApps(openApp, openApps)
    }
    Column(Modifier.weight(1f)) { ClusterNodes(openNode) }
   }
  } else {
   metricOverview()
   ClusterNodes(openNode)
-  ClusterApps(openApp, openApps)
  }
- DashboardActions()
 }
 
 @Composable
@@ -118,33 +113,5 @@ private fun ClusterNodes(open: (String) -> Unit) {
    }
    if (index < nodes.lastIndex) HorizontalDivider(color = DeskColors.raised)
   }
- }
-}
-
-@Composable
-private fun ClusterApps(open: (String) -> Unit, openAll: () -> Unit) {
- val apps = LiveRepository.services
- val synced = apps.count { it.sync == "Synced" }
- val title = if (apps.isEmpty()) "Argo CD" else "Argo CD · $synced of ${apps.size} synced"
- CompanionPanel(title) {
-  if (apps.isEmpty()) Text("Application status unavailable", color = DeskColors.muted, fontSize = 13.sp)
-  val preview = apps.sortedWith(compareBy({ it.health == "Healthy" && it.sync == "Synced" }, { it.name })).take(2)
-  preview.forEachIndexed { index, app ->
-   Row(
-    Modifier.fillMaxWidth().heightIn(min = 48.dp).clickable { open(app.name) },
-    verticalAlignment = Alignment.CenterVertically,
-    horizontalArrangement = Arrangement.spacedBy(12.dp)
-   ) {
-    VerdictMark(if (app.health == "Healthy" && app.sync == "Synced") Verdict.Calm else Verdict.Attention)
-    Column(Modifier.weight(1f)) {
-     Text(app.name, color = DeskColors.text, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
-     Text(listOf(app.health, app.sync).filter(String::isNotBlank).joinToString(" · ").ifBlank { "Unknown" },
-      color = DeskColors.muted, fontSize = 12.sp)
-    }
-    Text("›", color = DeskColors.text, fontSize = 20.sp)
-   }
-   if (index < preview.lastIndex) HorizontalDivider(color = DeskColors.raised)
-  }
-  if (apps.size > preview.size) DeskAction("All applications") { openAll() }
  }
 }

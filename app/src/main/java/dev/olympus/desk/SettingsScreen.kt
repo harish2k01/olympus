@@ -410,7 +410,7 @@ internal val LocalGridGap=staticCompositionLocalOf{10}
 @Composable
 internal fun ServicesTabs(selected: String, select: (String) -> Unit) {
  Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-  listOf("Monitors", "Apps").forEach { label ->
+  listOf("Monitors", "Integrations").forEach { label ->
    val active = label == selected
    Box(
     Modifier.heightIn(min = 32.dp).clip(RoundedCornerShape(16.dp))
@@ -424,10 +424,10 @@ internal fun ServicesTabs(selected: String, select: (String) -> Unit) {
  }
 }
 
-@Composable internal fun MonitorScreen(openIntegration: ((String) -> Unit)? = null, open: (String) -> Unit = {}) {
+@Composable internal fun MonitorScreen(preview: Boolean = false, open: (String) -> Unit = {}) {
  var search by rememberSaveable { mutableStateOf("") }
  var status by rememberSaveable { mutableStateOf("All") }
- var showAll by rememberSaveable { mutableStateOf(openIntegration == null) }
+ var showAll by rememberSaveable { mutableStateOf(!preview) }
  val monitors = LiveRepository.monitors
  if (monitors.isEmpty()) {
   DeskEmpty("Monitor readings unavailable")
@@ -472,28 +472,7 @@ internal fun ServicesTabs(selected: String, select: (String) -> Unit) {
    }
   }
  }
- if (openIntegration != null) {
-  val arr = LiveRepository.integrations.filter { it.kind in listOf("radarr", "sonarr") }.groupBy { it.kind }
-   .map { (_, instances) -> instances.first() }
-  if (arr.isNotEmpty()) Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-   arr.forEach { app ->
-    Box(Modifier.weight(1f).clickable { openIntegration(app.name) }) {
-     CompanionPanel("") {
-      Text(app.name.replaceFirstChar { it.titlecase() }, color = DeskColors.text, fontSize = 16.sp, fontWeight = FontWeight.Bold)
-      val queued = app.fields["Queued"]
-      Text(
-       when {
-        app.error.isNotBlank() && queued == null -> "API unavailable"
-        queued != null -> "${queued.toInt()} in queue"
-        else -> "Queue unavailable"
-       },
-       color = DeskColors.muted, fontSize = 12.sp
-      )
-     }
-    }
-   }
-   if (arr.size == 1) Spacer(Modifier.weight(1f))
-  }
+ if (preview) {
   if (monitors.size > 4) DeskAction(if (showAll) "Show fewer monitors" else "Show all monitors") {
    showAll = !showAll
    if (!showAll) { search = ""; status = "All" }

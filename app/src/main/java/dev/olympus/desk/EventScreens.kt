@@ -1,7 +1,5 @@
 package dev.olympus.desk
 
-import android.content.Intent
-import android.net.Uri
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -238,9 +236,7 @@ private fun groupingKey(e: LabEvent) =
   if(event.pod.isNotBlank()&&event.namespace.isNotBlank())DeskAction("Inspect workload",true){open("pod:${event.namespace}/${event.pod}@${event.node}")}
   if(event.node.isNotBlank())DeskAction("Node · ${event.node}"){open("node:${event.node}")}
   if(app!=null)DeskAction("Application"){open("app:${app.name}")}
-  if(app?.url?.startsWith("https://")==true)DeskAction("Open source"){context.startActivity(Intent(Intent.ACTION_VIEW,Uri.parse(app.url)))}
  }
- DashboardActions(argoApplication = app?.name)
  DeskDisclosure("Reported details") { measurements() }
  if(event.title.contains("throttl",true))DeskDisclosure("About throttling"){Text("A container can reach its CPU quota without high node CPU usage. The reported percentage counts throttled scheduling periods, not node CPU utilization.",color=EventMuted,fontSize=12.sp)}
  DeskDisclosure("Technical details"){
@@ -251,7 +247,6 @@ private fun groupingKey(e: LabEvent) =
 }
 
 @Composable private fun DeskIncidentDetail(event: LabEvent, open: (String) -> Unit) {
- val context = LocalContext.current
  val data = remember(event.detail) { runCatching { JSONObject(event.detail) }.getOrNull() }
  val message = data?.optString("message").orEmpty().ifBlank { data?.optString("description").orEmpty() }
  val workload = listOf(event.namespace, event.pod).filter(String::isNotBlank).joinToString("/")
@@ -278,11 +273,6 @@ private fun groupingKey(e: LabEvent) =
     open("pod:${event.namespace}/${event.pod}@${event.node}")
    }
    if (event.node.isNotBlank()) DeskAction("Node") { open("node:${event.node}") }
-   listOf("argo" to "Argo CD", "grafana" to "Grafana").forEach { (key, label) ->
-    LiveRepository.dashboardLinks[key]?.let { address ->
-     DeskAction(label) { runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(address))) } }
-    }
-   }
   }
  }
 }

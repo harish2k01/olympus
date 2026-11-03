@@ -99,7 +99,6 @@ private fun shortKind(kind:String)=when(kind){"Application"->"APP";"Deployment"-
     }
    }
  }
- DashboardActions(argoApplication = name)
  if (details != null) DeskDisclosure("Inspect full resource map") { ResourceTree(details, open) }
  val events = LiveRepository.events.filter { it.source.contains(name, true) || it.detail.contains(name, true) }
  if (events.isNotEmpty()) DeskDisclosure("Related events") {
@@ -152,27 +151,4 @@ private fun shortKind(kind:String)=when(kind){"Application"->"APP";"Deployment"-
   Text(listOf(node.kind,node.namespace).filter{it.isNotBlank()}.joinToString(" · "),color=TreeMuted,fontSize=12.sp)
   Row(horizontalArrangement=Arrangement.spacedBy(8.dp)){if(node.kind=="Pod")DeskAction("Inspect container & logs",true){selected=null;open("pod:${node.namespace}/${node.name}@")};DeskAction("Close"){selected=null}}
  }}
-}
-
-@Composable
-internal fun DashboardActions(argoApplication: String? = null) {
- val context = LocalContext.current
- val argo = LiveRepository.dashboardLinks["argo"]
- val grafana = LiveRepository.dashboardLinks["grafana"]
- if (argo == null && grafana == null) return
- fun open(url: String) {
-  runCatching { context.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(url))) }
- }
- Row(
-  Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(vertical = 4.dp),
-  horizontalArrangement = Arrangement.spacedBy(8.dp)
- ) {
-  argo?.let { address ->
-   DeskAction("Open Argo CD") {
-    open(if (argoApplication == null) address else android.net.Uri.parse(address).buildUpon()
-     .appendPath("applications").appendPath("argocd").appendPath(argoApplication).build().toString())
-   }
-  }
-  grafana?.let { address -> DeskAction("Open Grafana") { open(address) } }
- }
 }
