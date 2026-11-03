@@ -71,13 +71,15 @@ spec:
         seccompProfile: {type: RuntimeDefault}
       containers:
         - name: api
-          image: ghcr.io/harish2k01/olympus-backend:b68ebb4c871d93c0ea6e8448324c1675036071c9
+          image: ghcr.io/harish2k01/olympus-backend:7728aa6588cf0b9ff1d3b6a8c94f03080a492ded
           ports: [{name: http, containerPort: 8080}]
           envFrom:
             - secretRef: {name: olympus-auth}
             - secretRef: {name: olympus-integrations, optional: true}
           env:
             - {name: HISTORY_FILE, value: /data/events.json}
+            - {name: ARGOCD_URL, value: "https://argocd.k8s.harish2k01.xyz"}
+            - {name: GRAFANA_URL, value: "https://grafana.k8s.harish2k01.xyz"}
           volumeMounts:
             - {name: history, mountPath: /data}
           resources:
