@@ -405,9 +405,14 @@ private fun stamp(value:String)=try{DateTimeFormatter.ofPattern("dd MMM · HH:mm
   else -> state
  }
  val accent = verdict.accent
+ val heroColor by androidx.compose.animation.animateColorAsState(
+  targetValue = if (incident != null) DeskColors.attentionSurface else Card,
+  animationSpec = if (LocalReducedMotion.current) androidx.compose.animation.core.snap() else tween(200),
+  label = "Verdict card"
+ )
  Column(
   modifier.then(if (tall) Modifier else Modifier.padding(bottom = 8.dp)).clip(RoundedCornerShape(24.dp))
-   .background(if(incident!=null) DeskColors.attentionSurface else Card).padding(16.dp),
+   .background(heroColor).padding(16.dp),
   verticalArrangement = if (tall) Arrangement.SpaceBetween else Arrangement.spacedBy(6.dp)
  ) {
   Column {
@@ -826,8 +831,20 @@ private val iconCache=android.util.LruCache<String,android.graphics.Bitmap>(40)
  }
  val accent = Cobalt
  val track = DeskColors.track
+ val reducedMotion = LocalReducedMotion.current
+ val progress = androidx.compose.animation.core.animateFloatAsState(
+  targetValue = reading?.coerceIn(0f, 100f) ?: 0f,
+  animationSpec = if (reducedMotion) androidx.compose.animation.core.snap() else tween(350),
+  label = "Metric ring"
+ )
  val cached = !LiveRepository.state.startsWith("Live")
- val age = if (cached) "Cached" else sourceAge(widget.kind)?.let { "${formatObservationAge(it)} old" }
+ val ageSeconds = sourceAge(widget.kind)
+ val stale = classifyFreshness(ageSeconds) == Freshness.Stale
+ val age = when {
+  cached -> ageSeconds?.let { "Cached · ${formatObservationAge(it)}" } ?: "Cached"
+  stale -> ageSeconds?.let { "${formatObservationAge(it)} old" }
+  else -> null
+ }
  val landscape = wideWindow()
  val historyKey = if (widget.target.isBlank()) { if (cpu) "cpu" else "memory" } else if (cpu) "node:${widget.target}" else "node-memory:${widget.target}"
  val samples = LiveRepository.history[historyKey].orEmpty()
@@ -847,7 +864,7 @@ private val iconCache=android.util.LruCache<String,android.graphics.Bitmap>(40)
     Canvas(Modifier.fillMaxSize().padding((diameter * .10f))) {
      val stroke = Stroke((diameter * .105f).toPx(), cap = androidx.compose.ui.graphics.StrokeCap.Round)
      drawCircle(track, style = stroke)
-     if (reading != null && reading > 0) drawArc(accent, -90f, reading.coerceIn(0f, 100f) * 3.6f, false, style = stroke)
+     if (reading != null && progress.value > 0f) drawArc(accent, -90f, progress.value * 3.6f, false, style = stroke)
     }
     Text(reading?.let { "${kotlin.math.round(it).toInt()}%" } ?: "—", color = Paper,
      fontSize = if (diameter >= 84.dp) 19.sp else 13.sp, fontWeight = FontWeight.Bold, maxLines = 1)
@@ -860,7 +877,7 @@ private val iconCache=android.util.LruCache<String,android.graphics.Bitmap>(40)
     Text(widget.label.ifBlank { widget.kind }, color = Paper, fontSize = 14.sp, lineHeight = 16.sp,
      fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
     Text(denominator, color = Muted, fontSize = 10.sp, lineHeight = 12.sp, maxLines = 2, textAlign = textAlign)
-    if (age != null && (!landscape && tallTile || cached)) Text(age, color = Muted, fontSize = 10.sp, lineHeight = 11.sp, maxLines = 1)
+    if (age != null) Text(age, color = if (stale && !cached) Apricot else Muted, fontSize = 11.sp, lineHeight = 13.sp, maxLines = 2)
    }
   }
   @Composable fun trend() {
