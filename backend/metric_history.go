@@ -37,6 +37,15 @@ var historyIdentity = regexp.MustCompile(`^[a-zA-Z0-9_.-]{1,253}$`)
 func historyQueries(v url.Values) ([]historyQuery, error) {
 	valid := func(key string) bool { return historyIdentity.MatchString(v.Get(key)) }
 	switch v.Get("kind") {
+	case "cluster-cpu", "cluster-memory":
+		metric := historyQuery{"CPU · reporting logical cores", "%", `100 * (1 - avg(rate(node_cpu_seconds_total{job="node-exporter",mode="idle"}[5m])))`}
+		if v.Get("kind") == "cluster-memory" {
+			metric = historyQuery{"Memory · reporting physical capacity", "%", `100 * sum(node_memory_MemTotal_bytes{job="node-exporter"} - node_memory_MemAvailable_bytes{job="node-exporter"}) / sum(node_memory_MemTotal_bytes{job="node-exporter"} and node_memory_MemAvailable_bytes{job="node-exporter"})`}
+		}
+		return []historyQuery{metric,
+			{"Argo CD sync", "sync-marker", `sum(increase(argocd_app_sync_total{phase="Succeeded"}[5m]))`},
+			{"Container restart", "restart-marker", `sum(increase(kube_pod_container_status_restarts_total[5m]))`},
+		}, nil
 	case "monitor":
 		if !valid("id") { return nil, fmt.Errorf("invalid monitor") }
 		selector := `{monitor_id=`+strconv.Quote(v.Get("id"))+`}`

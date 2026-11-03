@@ -62,3 +62,18 @@ func TestHistoryUpstreamFailureDoesNotReturnEmptySuccess(t *testing.T) {
 	s.metricHistory(w,httptest.NewRequest("GET","/v1/metrics/history?kind=monitor&id=1",nil),context.Background())
 	if w.Code!=502 { t.Fatal("upstream failure presented as an empty healthy history") }
 }
+
+func TestClusterHistoryUsesFixedQueriesAndSeparateChangeMarkers(t *testing.T) {
+	for _, kind := range []string{"cluster-cpu", "cluster-memory"} {
+		queries, err := historyQueries(url.Values{"kind": {kind}, "query": {"untrusted"}})
+		if err != nil || len(queries) != 3 || queries[0].Unit != "%" ||
+			queries[1].Unit != "sync-marker" || queries[2].Unit != "restart-marker" {
+			t.Fatalf("%s: expected one percentage and two marker series: %v, %v", kind, queries, err)
+		}
+		for _, query := range queries {
+			if strings.Contains(query.Expression, "untrusted") {
+				t.Fatalf("%s: accepted a caller-supplied expression", kind)
+			}
+		}
+	}
+}
