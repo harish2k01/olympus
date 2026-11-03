@@ -50,6 +50,13 @@ func historyQueries(v url.Values) ([]historyQuery, error) {
 		if !valid("id") { return nil, fmt.Errorf("invalid monitor") }
 		selector := `{monitor_id=`+strconv.Quote(v.Get("id"))+`}`
 		return []historyQuery{{"Response time", "ms", `max(monitor_response_time`+selector+`)`}, {"Availability state", "state", `max(monitor_status`+selector+`)`}}, nil
+	case "container-memory":
+		if !valid("namespace") || !valid("pod") || !valid("container") { return nil, fmt.Errorf("invalid resource") }
+		selector := `namespace=`+strconv.Quote(v.Get("namespace"))+`,pod=`+strconv.Quote(v.Get("pod"))+`,container=`+strconv.Quote(v.Get("container"))
+		return []historyQuery{
+			{"Working set · configured memory limit", "%", `100 * max(container_memory_working_set_bytes{`+selector+`}) / (max(kube_pod_container_resource_limits{resource="memory",unit="byte",`+selector+`}) > 0)`},
+			{"Container restart", "restart-marker", `sum(increase(kube_pod_container_status_restarts_total{`+selector+`}[5m]))`},
+		}, nil
 	case "throttling":
 		if !valid("namespace") || !valid("pod") || !valid("container") { return nil, fmt.Errorf("invalid resource") }
 		selector := `{namespace=`+strconv.Quote(v.Get("namespace"))+`,pod=`+strconv.Quote(v.Get("pod"))+`,container=`+strconv.Quote(v.Get("container"))+`}`

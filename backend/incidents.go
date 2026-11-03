@@ -160,7 +160,9 @@ func (s *server) collectIncidents(ctx context.Context, out *Snapshot) {
 	if err == nil {
 		for _, r := range rows {
 			resource := r.Metric["namespace"] + "/" + r.Metric["pod"]
-			current = append(current, incident("crashloop:"+resource, "Kubernetes", "CrashLoopBackOff · "+r.Metric["pod"], "A container is repeatedly failing to start", "Workloads", resource, now))
+			e := incident("crashloop:"+resource, "Kubernetes", "CrashLoopBackOff · "+r.Metric["pod"], "A container is repeatedly failing to start", "Workloads", resource, now)
+			e.Namespace, e.Pod = r.Metric["namespace"], r.Metric["pod"]
+			current = append(current, e)
 		}
 	}
 	out.Active = s.reconcileIncidents(current, complete, now)
