@@ -22,27 +22,27 @@ internal data class DeskPalette(
  val background: Color, val surface: Color, val raised: Color,
  val text: Color, val muted: Color, val blue: Color,
  val cobalt: Color, val lilac: Color, val apricot: Color, val green: Color,
- val attentionSurface: Color, val onAttention: Color, val selected: Color, val critical: Color, val track: Color
+ val attentionSurface: Color, val onAttention: Color, val selected: Color, val critical: Color, val track: Color, val onPrimary: Color, val onSelected: Color
 )
 
 internal val DarkDesk = DeskPalette(
  Color(0xFF0F1115), Color(0xFF1A1D24), Color(0xFF232733),
  Color(0xFFE6E8EE), Color(0xFFA7ADBB), Color(0xFF9CCBFF),
  Color(0xFF5268EF), Color(0xFFC7BFED), Color(0xFFFFB86B), Color(0xFFB5DEC6),
- Color(0xFF3A2B14), Color(0xFFFFD9A8), Color(0xFF2C3A4F), Color(0xFFFF8A65), Color(0xFF2B3040)
+ Color(0xFF3A2B14), Color(0xFFFFD9A8), Color(0xFF2C3A4F), Color(0xFFFF8A65), Color(0xFF2B3040), Color(0xFF0A2036), Color(0xFFCFE5FF)
 )
 
 internal val LightDesk = DeskPalette(
  Color(0xFFF3F5F9), Color.White, Color(0xFFE6EBF3),
  Color(0xFF14181F), Color(0xFF4F5B6C), Color(0xFF1F5FA6),
  Color(0xFF1F5FA6), Color(0xFF5A4B8A), Color(0xFFA35C00), Color(0xFF285F4B),
- Color(0xFFFFE2BD), Color(0xFF4A2E00), Color(0xFFD3E3FA), Color(0xFFB3261E), Color(0xFFD5DCE8)
+ Color(0xFFFFE2BD), Color(0xFF4A2E00), Color(0xFFD3E3FA), Color(0xFFB3261E), Color(0xFFD5DCE8), Color.White, Color(0xFF0F3A6B)
 )
 
 internal val LocalDeskPalette = staticCompositionLocalOf { DarkDesk }
 internal val DeskColors: DeskPalette @Composable get() = LocalDeskPalette.current
 @Composable internal fun DeskAction(label:String,primary:Boolean=false,enabled:Boolean=true,click:()->Unit){
- Box(Modifier.heightIn(min=44.dp).clip(RoundedCornerShape(22.dp)).background(if(primary)MaterialTheme.colorScheme.primary else DeskColors.raised).clickable(enabled=enabled,onClick=click).padding(horizontal=13.dp),contentAlignment=Alignment.Center){Text(label,color=if(!enabled)DeskColors.muted.copy(alpha=.5f) else if(primary)MaterialTheme.colorScheme.onPrimary else DeskColors.text,fontSize=13.sp,fontWeight=FontWeight.Medium)}
+ Box(Modifier.heightIn(min=44.dp).clip(RoundedCornerShape(22.dp)).background(if(primary)DeskColors.blue else DeskColors.selected).clickable(enabled=enabled,onClick=click).padding(horizontal=13.dp),contentAlignment=Alignment.Center){Text(label,color=if(!enabled)DeskColors.muted.copy(alpha=.5f) else if(primary)DeskColors.onPrimary else DeskColors.onSelected,fontSize=14.sp,fontWeight=FontWeight.Bold)}
 }
 @Composable internal fun DeskSegments(items:List<String>,selected:String,choose:(String)->Unit,refresh:(()->Unit)?=null){
  Row(Modifier.fillMaxWidth().height(40.dp).horizontalScroll(rememberScrollState()),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(6.dp)){
@@ -62,7 +62,7 @@ internal val DeskColors: DeskPalette @Composable get() = LocalDeskPalette.curren
 }
 @Composable internal fun DeskSearch(value:String,change:(String)->Unit,label:String){
  Row(Modifier.fillMaxWidth().padding(vertical=4.dp).clip(RoundedCornerShape(12.dp)).background(DeskColors.surface).padding(horizontal=14.dp,vertical=10.dp),verticalAlignment=Alignment.CenterVertically){
-  androidx.compose.foundation.text.BasicTextField(value=value,onValueChange=change,singleLine=true,textStyle=androidx.compose.ui.text.TextStyle(color=DeskColors.text,fontSize=14.sp),modifier=Modifier.weight(1f),decorationBox={inner->Box{if(value.isBlank())Text(label,color=DeskColors.muted,fontSize=14.sp);inner()}})
+  androidx.compose.foundation.text.BasicTextField(value=value,onValueChange=change,singleLine=true,textStyle=LocalTextStyle.current.copy(color=DeskColors.text,fontSize=14.sp),modifier=Modifier.weight(1f),decorationBox={inner->Box{if(value.isBlank())Text(label,color=DeskColors.muted,fontSize=14.sp);inner()}})
  }
 }
 @Composable internal fun DeskPopup(expanded:Boolean,dismiss:()->Unit,items:List<Pair<String,()->Unit>>){if(expanded)Popup(alignment=Alignment.TopEnd,onDismissRequest=dismiss,properties=PopupProperties(focusable=true)){

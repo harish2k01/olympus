@@ -41,25 +41,69 @@ private fun shortKind(kind:String)=when(kind){"Application"->"APP";"Deployment"-
  }
 }
 
-@Composable internal fun ApplicationScreen(name:String,open:(String)->Unit){
- val context=LocalContext.current;val scope=rememberCoroutineScope()
- val app=LiveRepository.services.find{it.name==name}
- LaunchedEffect(name){Pairing.read(context)?.let{LiveRepository.loadApp(it,name)}}
- if(app==null){Text("Application unavailable",color=TreeMuted);return}
- Row(Modifier.fillMaxWidth().padding(vertical=4.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(12.dp)){
-  AppIcon(app.icon,name)
-  Column(Modifier.weight(1f)){Text(app.health,color=if(app.health=="Healthy")TreeGreen else TreeWarm,fontWeight=FontWeight.SemiBold);Text("${app.sync} · ${app.namespace} · ${app.ready}/${app.pods} pods",color=TreeMuted,fontSize=11.sp)}
-  if(app.url.startsWith("https://"))TextButton(onClick={context.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW,android.net.Uri.parse(app.url)))}){Text("Open ↗",color=TreeBlue)}
+@Composable internal fun ApplicationScreen(name: String, open: (String) -> Unit) {
+ val context = LocalContext.current
+ val app = LiveRepository.services.find { it.name == name }
+ LaunchedEffect(name) { Pairing.read(context)?.let { LiveRepository.loadApp(it, name) } }
+ if (app == null) {
+  Text("Application unavailable", color = TreeMuted)
+  return
  }
- if (app.lastSync.isNotBlank()) Text("Last sync · ${localTime(app.lastSync)}", color = TreeMuted, fontSize = 12.sp)
+ val details = LiveRepository.appDetails
+ Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(bottom = 4.dp),
+  horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+  StatusPill(app.health.ifBlank { "Health unknown" }, if (app.health == "Healthy") TreeBlue else TreeWarm)
+  StatusPill(app.sync.ifBlank { "Sync unknown" }, if (app.sync == "Synced") TreeBlue else TreeWarm)
+  if (app.lastSync.isNotBlank()) StatusPill("Last sync · ${localTime(app.lastSync)}", TreeMuted)
+ }
+ CompanionPanel("Resource map") {
+  if (details == null) Text(if (LiveRepository.appError) "Resource map unavailable" else "Loading resources…", color = TreeMuted)
+  else {
+   if (details.optBoolean("partial")) Text("Some resource data is unavailable", color = TreeWarm, fontSize = 11.sp)
+   val rows = details.optJSONArray("nodes")
+   val nodes = List(rows?.length() ?: 0) { rows!!.getJSONObject(it) }
+   val parents = nodes.associate { node ->
+    val ids = node.optJSONArray("parents")
+    node.optString("id") to List(ids?.length() ?: 0) { ids!!.optString(it) }
+   }
+   fun depth(id: String, visited: Set<String> = emptySet()): Int {
+    if (id in visited || visited.size == 4) return 0
+    return parents[id].orEmpty().maxOfOrNull { 1 + depth(it, visited + id) } ?: 0
+   }
+   val kinds = listOf("Application", "Deployment", "StatefulSet", "DaemonSet", "ReplicaSet", "Pod", "Service", "PersistentVolumeClaim")
+   nodes.filter { it.optString("kind") in kinds }
+    .sortedWith(compareBy { kinds.indexOf(it.optString("kind")) }).take(24).forEach { node ->
+     val kind = node.optString("kind")
+     val nodeName = node.optString("name")
+     val action = if (kind == "Pod") Modifier.clickable { open("pod:${node.optString("namespace")}/$nodeName@") } else Modifier
+     Row(Modifier.fillMaxWidth().padding(start = (depth(node.optString("id")).coerceAtMost(3) * 14).dp)
+      .clip(RoundedCornerShape(16.dp)).background(DeskColors.raised).then(action).heightIn(min = 44.dp).padding(horizontal = 12.dp),
+      horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
+      val health = node.optString("health")
+      val sync = node.optString("sync")
+      VerdictMark(when { health == "Healthy" || sync == "Synced" -> Verdict.Calm
+       health in listOf("Degraded", "Missing") || sync == "OutOfSync" -> Verdict.Attention
+       else -> Verdict.Unknown })
+      Text(if (kind == "PersistentVolumeClaim") "Storage" else kind, color = TreeMuted, fontSize = 12.sp)
+      Text(nodeName, Modifier.weight(1f), color = TreePaper, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+     }
+    }
+  }
+ }
+ CompanionPanel("Resource use · this app's pods only") {
+  listOf("CPU" to app.cpu?.let { "${(it * 1000).toInt()} m" }, "Memory" to app.memory?.let { "${it.toInt()} MiB" })
+   .forEach { (label, value) ->
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+     Text(label, color = TreeMuted)
+     Text(value ?: "Unavailable", color = TreePaper, fontWeight = FontWeight.SemiBold)
+    }
+   }
+ }
  DashboardActions(argoApplication = name)
- var tab by rememberSaveable(name){mutableStateOf("Resources")}
- CompactTabs(listOf("Resources","Usage","Events"),tab,{tab=it}){scope.launch{Pairing.read(context)?.let{LiveRepository.loadApp(it,name)}}}
-
- when(tab){
-  "Resources"->{val details=LiveRepository.appDetails;if(details==null){Text(if(LiveRepository.appError)"Resource map unavailable"else"Loading resources…",color=TreeMuted,modifier=Modifier.padding(18.dp))}else{if(details.optBoolean("partial"))Text("Some resource data is unavailable",color=TreeWarm,fontSize=11.sp);ResourceTree(details,open)}}
-  "Usage"->{DetailTable("Workload usage",listOf("Metric","Value"),listOf(240,250),listOf(listOf("CPU",if(app.cpu==null)"Unavailable"else"${(app.cpu*1000).toInt()}m"),listOf("Memory",if(app.memory==null)"Unavailable"else"${app.memory.toInt()} MiB"),listOf("Ready pods","${app.ready}/${app.pods}")));Text("CPU",color=TreeMuted,modifier=Modifier.padding(top=20.dp));Spark(LiveRepository.history["app:$name:cpu"]?:emptyList(),TreeBlue);Text("Memory",color=TreeMuted,modifier=Modifier.padding(top=20.dp));Spark(LiveRepository.history["app:$name:memory"]?:emptyList(),DeskColors.lilac)}
-  "Events"->{val events=LiveRepository.events.filter{it.source.contains(name,true)||it.detail.contains(name,true)};if(events.isEmpty())Text("No matching events",color=TreeMuted,modifier=Modifier.padding(18.dp));events.forEach{event->EventRow(event){open("event:${event.id}")}}}
+ if (details != null) DeskDisclosure("Inspect full resource map") { ResourceTree(details, open) }
+ val events = LiveRepository.events.filter { it.source.contains(name, true) || it.detail.contains(name, true) }
+ if (events.isNotEmpty()) DeskDisclosure("Related events") {
+  events.forEach { event -> EventRow(event) { open("event:${event.id}") } }
  }
 }
 

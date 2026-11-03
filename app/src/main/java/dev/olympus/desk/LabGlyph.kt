@@ -23,6 +23,22 @@ import kotlin.math.*
   fun line(x:Float,y:Float,a:Float,b:Float){drawLine(color,Offset(x*u,y*u),Offset(a*u,b*u),stroke,StrokeCap.Round)}
   fun path(vararg points:Pair<Float,Float>,close:Boolean=false){val p=Path();points.forEachIndexed{i,(x,y)->if(i==0)p.moveTo(x*u,y*u)else p.lineTo(x*u,y*u)};if(close)p.close();drawPath(p,color,style=Stroke(stroke,cap=StrokeCap.Round))}
   when(kind){
+   "NavHome" -> path(4f to 11f, 12f to 4f, 20f to 11f, 20f to 20f, 4f to 20f, close = true)
+   "NavCluster" -> listOf(4f, 13f).forEach { x -> listOf(4f, 13f).forEach { y ->
+    path(x to y, x+7 to y, x+7 to y+7, x to y+7, close = true)
+   } }
+   "NavServices" -> {
+    path(3f to 9f, 12f to 4f, 21f to 9f, 12f to 14f, close = true)
+    path(3f to 14f, 12f to 19f, 21f to 14f)
+   }
+   "NavInbox" -> {
+    path(3f to 13f, 6f to 5f, 18f to 5f, 21f to 13f, 21f to 20f, 3f to 20f, close = true)
+    path(3f to 13f, 9f to 13f, 10f to 16f, 14f to 16f, 15f to 13f, 21f to 13f)
+   }
+   "Sliders" -> {
+    line(4f, 7f, 20f, 7f); line(16f, 5f, 16f, 9f)
+    line(4f, 17f, 20f, 17f); line(8f, 15f, 8f, 19f)
+   }
    "Refresh"->{drawArc(color,35f,285f,false,Offset(4*u,4*u),androidx.compose.ui.geometry.Size(16*u,16*u),style=Stroke(stroke,cap=StrokeCap.Round));path(19f to 3f,20f to 9f,14f to 8f)}
    "Clock"->{drawCircle(color,8*u,Offset(12*u,12*u),style=Stroke(stroke));path(12f to 7f,12f to 12f,16f to 14f)}
    "CPU"->{path(6f to 6f,18f to 6f,18f to 18f,6f to 18f,close=true);path(9f to 9f,15f to 9f,15f to 15f,9f to 15f,close=true);listOf(8f,12f,16f).forEach{p->line(p,3f,p,6f);line(p,18f,p,21f);line(3f,p,6f,p);line(18f,p,21f,p)}}

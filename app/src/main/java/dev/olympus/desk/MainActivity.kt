@@ -110,15 +110,16 @@ class MainActivity:ComponentActivity(){
             val base = if (light) lightColorScheme() else darkColorScheme()
             MaterialTheme(
                 colorScheme = base.copy(primary = palette.blue, background = palette.background, surface = palette.surface,
-                    onSurface = palette.text, onBackground = palette.text, onPrimary = if (light) Color.White else palette.background,
-                    primaryContainer = palette.selected, onPrimaryContainer = palette.text, secondaryContainer = palette.selected,
-                    onSecondaryContainer = palette.text, surfaceVariant = palette.raised, onSurfaceVariant = palette.muted, error = palette.critical),
+                    onSurface = palette.text, onBackground = palette.text, onPrimary = palette.onPrimary,
+                    primaryContainer = palette.selected, onPrimaryContainer = palette.onSelected, secondaryContainer = palette.selected,
+                    onSecondaryContainer = palette.onSelected, surfaceVariant = palette.raised, onSurfaceVariant = palette.muted, error = palette.critical),
                 typography=Typography(
-                    bodyLarge=TextStyle(fontSize=13.sp),
-                    bodyMedium=TextStyle(fontSize=12.sp),
-                    bodySmall=TextStyle(fontSize=11.sp),
-                    labelLarge=TextStyle(fontSize=12.sp,lineHeight=16.sp),
-                    labelMedium=TextStyle(fontSize=11.sp,lineHeight=14.sp)
+                    bodyLarge=TextStyle(fontFamily=Figtree,fontSize=14.sp),
+                    bodyMedium=TextStyle(fontFamily=Figtree,fontSize=14.sp),
+                    bodySmall=TextStyle(fontFamily=Figtree,fontSize=12.sp),
+                    titleLarge=TextStyle(fontFamily=Figtree,fontSize=22.sp,fontWeight=FontWeight.Bold),
+                    labelLarge=TextStyle(fontFamily=Figtree,fontSize=12.sp,lineHeight=16.sp,fontWeight=FontWeight.SemiBold),
+                    labelMedium=TextStyle(fontFamily=Figtree,fontSize=12.sp,lineHeight=14.sp,fontWeight=FontWeight.SemiBold)
                 )
             ) { ProvideTextStyle(LocalTextStyle.current.copy(fontFamily = Figtree)) { CompositionLocalProvider(LocalDeskPalette provides palette) { HomeApp(notificationTarget,notificationNonce) } } }
         }

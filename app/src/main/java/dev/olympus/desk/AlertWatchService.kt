@@ -12,6 +12,7 @@ class AlertWatchService:Service(){
  private val scope=CoroutineScope(SupervisorJob()+Dispatchers.Main.immediate)
  private var watcher:Job?=null
  private val prefs get()=getSharedPreferences("home-v3",0)
+ private val incidentMutes get() = getSharedPreferences("incident-mutes", MODE_PRIVATE)
  private val manager get()=getSystemService(NotificationManager::class.java)
  private fun content(id:String="")=PendingIntent.getActivity(this,id.hashCode(),Intent(this,MainActivity::class.java).putExtra("eventId",id).addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP),PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
  private fun ongoing(text:String):Notification{
@@ -30,7 +31,12 @@ class AlertWatchService:Service(){
  }
  override fun onStartCommand(intent:Intent?,flags:Int,startId:Int):Int{
   if (intent?.action == "silence") {
-   prefs.edit().putLong("notificationsSilencedUntil", System.currentTimeMillis() + 3_600_000L).apply()
+   val id = intent.data?.lastPathSegment
+   if (!id.isNullOrBlank()) {
+    incidentMutes.edit().putLong(id, System.currentTimeMillis() + 3_600_000L).apply()
+    manager.cancel(id.hashCode())
+   }
+   return START_NOT_STICKY
   }
   if(intent?.action=="stop"||!prefs.getBoolean("backgroundAlerts",false)){prefs.edit().putBoolean("backgroundAlerts",false).apply();stopSelf();return START_NOT_STICKY}
   startForeground(41,ongoing("Connecting to your cluster"))
@@ -49,20 +55,37 @@ class AlertWatchService:Service(){
       val events=(LiveRepository.active+LiveRepository.events).distinctBy{it.id}
       val sources=prefs.getStringSet("notificationSources",null)
       val quiet=prefs.getBoolean("quietHours",false)&&quietHour(LocalTime.now().hour,prefs.getInt("quietStart",22),prefs.getInt("quietEnd",7))
-      val silenced = System.currentTimeMillis() < prefs.getLong("notificationsSilencedUntil", 0L)
+      val now = System.currentTimeMillis()
+      val mutes = incidentMutes.all
+      val expired = mutes.filterValues { (it as? Long ?: 0L) <= now }.keys
+      if (expired.isNotEmpty()) {
+       val edit = incidentMutes.edit()
+       expired.forEach { edit.remove(it) }
+       edit.apply()
+      }
       if(seeded){
-       val eligible=alertCandidates(events,seen,prefs.getBoolean("appNotifications",true),prefs.getBoolean("recoveryNotifications",false)).filter { (sources == null || it.source in sources) && shouldNotifyNow(quiet, silenced, channel(it) == "critical") }
+       val eligible=alertCandidates(events,seen,apps=true,recoveries=prefs.getBoolean("recoveryNotifications",false)).filter { event ->
+        val channel = channel(event)
+        val enabled = when (channel) {
+         "critical" -> prefs.getBoolean("criticalNotifications", true)
+         "warning" -> prefs.getBoolean("warningNotifications", true)
+         "notices" -> prefs.getBoolean("appNotifications", true)
+         else -> true
+        }
+        enabled && (sources == null || event.source in sources) && shouldNotifyNow(quiet, (mutes[event.id] as? Long ?: 0L) > now, channel == "critical")
+       }
        eligible.take(10).forEach{event->
         val detail=listOf(event.node,event.namespace,event.pod).filter{it.isNotBlank()}.joinToString(" · ")
         val silence = PendingIntent.getService(this@AlertWatchService, 2,
-         Intent(this@AlertWatchService, AlertWatchService::class.java).setAction("silence"),
+                  Intent(this@AlertWatchService, AlertWatchService::class.java).setAction("silence")
+          .setData(android.net.Uri.Builder().scheme("olympus").authority("incident").appendPath(event.id).build()),
          PendingIntent.FLAG_IMMUTABLE)
         val notification=Notification.Builder(this@AlertWatchService,channel(event))
          .addAction(Notification.Action.Builder(null,"Open",content(event.id)).build())
          .addAction(Notification.Action.Builder(null,"Silence 1 h",silence).build()).setSmallIcon(R.drawable.ic_stat_olympus).setContentTitle(incidentTitle(event)).setContentText("${event.source} · ${event.state}"+if(detail.isBlank())""else" · $detail").setContentIntent(content(event.id)).setAutoCancel(true).setOnlyAlertOnce(true).setGroup("olympus-incidents").build()
         manager.notify(event.id.hashCode(),notification)
        }
-       if(eligible.size>10)manager.notify(42,Notification.Builder(this@AlertWatchService,"notices").setSmallIcon(R.drawable.ic_stat_olympus).setContentTitle("${eligible.size} cluster updates").setContentText("${eligible.size-10} additional updates · open Inbox").setContentIntent(content("-inbox-")).setAutoCancel(true).setGroup("olympus-incidents").setGroupSummary(true).build())
+       if(eligible.size>10 && prefs.getBoolean("appNotifications",true))manager.notify(42,Notification.Builder(this@AlertWatchService,"notices").setSmallIcon(R.drawable.ic_stat_olympus).setContentTitle("${eligible.size} cluster updates").setContentText("${eligible.size-10} additional updates · open Inbox").setContentIntent(content("-inbox-")).setAutoCancel(true).setGroup("olympus-incidents").setGroupSummary(true).build())
       }
       events.forEach{seen[it.id]=it.state+"|"+it.kind.lowercase()};if(seen.size>2500){val keep=events.map{it.id}.toSet();seen.keys.retainAll(keep)};seeded=true
       manager.notify(41,ongoing(if(LiveRepository.state.contains("Partial"))"Connected · some sources unavailable"else"Connected · ${LiveRepository.active.count{it.state=="Firing"}} firing"))

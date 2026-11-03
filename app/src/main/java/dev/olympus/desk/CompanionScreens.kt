@@ -9,14 +9,15 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import dev.olympus.desk.data.*
 import org.json.JSONObject
 
 @Composable internal fun CompanionPanel(title:String,content:@Composable ColumnScope.()->Unit){
- Column(Modifier.fillMaxWidth().padding(vertical=6.dp).clip(RoundedCornerShape(16.dp)).background(DeskColors.surface).padding(12.dp),verticalArrangement=Arrangement.spacedBy(8.dp)){
-  Text(title,color=DeskColors.text,fontSize=18.sp)
+ Column(Modifier.fillMaxWidth().padding(vertical=4.dp).clip(RoundedCornerShape(24.dp)).background(DeskColors.surface).padding(14.dp),verticalArrangement=Arrangement.spacedBy(8.dp)){
+  if (title.isNotEmpty()) Text(title,color=DeskColors.muted,fontSize=12.sp,fontWeight=androidx.compose.ui.text.font.FontWeight.SemiBold)
   content()
  }
 }
@@ -92,27 +93,69 @@ import org.json.JSONObject
  val context = LocalContext.current
  val integration=LiveRepository.integrations.find{it.name==name}
  val app=LiveRepository.services.find{it.name==name}
- CompanionPanel(name){
-  val ageSeconds = integration?.time?.let { stamp ->
-   runCatching { java.time.Duration.between(java.time.Instant.parse(stamp), java.time.Instant.now()).seconds.coerceAtLeast(0) }.getOrNull()
+ val displayName = name.replaceFirstChar { it.titlecase() }
+ val ageSeconds = integration?.time?.let { stamp ->
+  runCatching { java.time.Duration.between(java.time.Instant.parse(stamp), java.time.Instant.now()).seconds.coerceAtLeast(0) }.getOrNull()
+ }
+ val live = LiveRepository.state.startsWith("Live")
+ val reachable = live && integration?.error == ""
+ val status = when {
+  integration == null -> "Integration unavailable"
+  !live -> "Cached"
+  integration.error.isNotBlank() -> "Some fields unavailable"
+  else -> "Reachable"
+ }
+ val age = when {
+  ageSeconds == null -> null
+  ageSeconds >= 300 -> "Stale · ${ageSeconds / 60} min old"
+  ageSeconds >= 60 -> "Updated ${ageSeconds / 60} min ago"
+  else -> "Updated ${ageSeconds} s ago"
+ }
+ Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+  IntegrationPill(status, if (reachable) Verdict.Calm else Verdict.Unknown)
+  if (age != null) IntegrationPill(age)
+ }
+ val counters = integration?.let { service ->
+  if (service.kind !in listOf("sonarr", "radarr")) service.fields.toList()
+  else {
+   val total = service.fields["Queued"]
+   val downloading = service.queue?.takeIf { it.size.toFloat() == total }
+    ?.count { it.status.equals("downloading", ignoreCase = true) }?.toFloat()
+   listOf("Queue" to total, "Downloading" to downloading,
+    "Health" to service.fields["Health issues"], "Missing" to service.fields["Wanted"])
   }
-  val status = when {
-   integration == null -> "Integration unavailable"
-   !LiveRepository.state.startsWith("Live") -> "Cached integration data"
-   integration.error.isNotBlank() -> "Some fields unavailable"
-   ageSeconds == null -> "Collection time unavailable"
-   ageSeconds >= 300 -> "Stale · ${ageSeconds / 60} min old"
-   ageSeconds >= 60 -> "Aging · ${ageSeconds / 60} min old"
-   else -> "Fresh · ${ageSeconds} s old"
+ }.orEmpty()
+ val columns = if (wideWindow()) 4 else 2
+ counters.chunked(columns).forEach { fields ->
+  val showHealthNote = fields.any { (label, value) -> label == "Health" && (value ?: 0f) > 0 }
+  Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+   fields.forEach { (label, value) ->
+    Box(Modifier.weight(1f)) {
+     CompanionPanel(label) {
+      val warn = label == "Health" && (value ?: 0f) > 0
+      Text(value?.toInt()?.toString() ?: "—", color = if (warn) DeskColors.apricot else DeskColors.text, fontSize = 34.sp, fontWeight = FontWeight.Bold)
+      if (showHealthNote) {
+       Text(if (warn) { if (value == 1f) "issue" else "issues" } else " ",
+        color = DeskColors.muted, fontSize = 12.sp)
+      }
+     }
+    }
+   }
+   if (fields.size < columns) Spacer(Modifier.weight((columns - fields.size).toFloat()))
   }
-  val fresh = status.startsWith("Fresh")
-  Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-   VerdictMark(if (fresh) Verdict.Calm else Verdict.Unknown)
-   Text(status, color = if (fresh) DeskColors.blue else DeskColors.muted, fontSize = 14.sp)
+ }
+ if (integration?.kind in listOf("sonarr", "radarr")) CompanionPanel("Queue") {
+  val queue = integration?.queue
+  when {
+   queue == null -> Text("Queue details unavailable", color = DeskColors.muted)
+   queue.isEmpty() -> Text("No queued items returned", color = DeskColors.muted)
+   else -> queue.forEachIndexed { index, item ->
+    if (index > 0) HorizontalDivider(color = DeskColors.raised)
+    Text(item.title.ifBlank { "Untitled queue item" }, color = DeskColors.text, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+    Text(listOfNotNull(item.status.takeIf(String::isNotBlank), item.progress?.let { "${it.toInt()}%" }).joinToString(" · "),
+     color = DeskColors.muted, fontSize = 12.sp)
+   }
   }
-  integration?.fields?.entries?.forEach{(label,value)->Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween){Text(label,color=DeskColors.muted);Text(value?.toInt()?.toString()?:"Unavailable",color=DeskColors.text)}}
-  if(integration?.time?.isNotBlank()==true)Text("Collected · ${localTime(integration.time)}",color=DeskColors.muted,fontSize=12.sp)
-  if(app!=null)DeskAction("Inspect application resources"){open("app:${app.name}")}
  }
  CompanionPanel("Health messages") {
   val health = integration?.health
@@ -130,8 +173,32 @@ import org.json.JSONObject
   }
  }
  val related=(LiveRepository.active+LiveRepository.events).distinctBy{it.id}.filter{it.source.replace(" ","").equals(name.replace("-",""),true)||it.source.equals(name,true)}
- CompanionPanel("App notifications"){
-  if(related.isEmpty())Text("No notifications received from this app",color=DeskColors.muted,fontSize=13.sp)
-  related.take(12).forEach{event->EventRow(event){open("event:${event.id}")}}
+ if (integration?.kind in listOf("sonarr", "radarr")) Text("Only fields $displayName provides are shown.", color = DeskColors.muted, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+ if (app?.url?.startsWith("https://") == true) {
+  FilledTonalButton(
+   onClick = {
+    runCatching { context.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(app.url))) }
+   },
+   modifier = Modifier.fillMaxWidth().heightIn(min = 44.dp)
+  ) { Text("Open $displayName  ↗", fontWeight = FontWeight.Bold) }
+ }
+ DeskDisclosure("Related app information") {
+  if (app != null) DeskAction("Inspect application resources") { open("app:${app.name}") }
+  CompanionPanel("App notifications") {
+   if (related.isEmpty()) Text("No notifications received from this app", color = DeskColors.muted, fontSize = 13.sp)
+   related.take(12).forEach { event -> EventRow(event) { open("event:${event.id}") } }
+  }
+ }
+}
+
+@Composable
+private fun IntegrationPill(label: String, verdict: Verdict? = null) {
+ Row(
+  Modifier.heightIn(min = 32.dp).clip(RoundedCornerShape(16.dp)).background(DeskColors.raised).padding(horizontal = 12.dp),
+  verticalAlignment = Alignment.CenterVertically,
+  horizontalArrangement = Arrangement.spacedBy(6.dp)
+ ) {
+  if (verdict != null) VerdictMark(verdict)
+  Text(label, color = DeskColors.text, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
  }
 }

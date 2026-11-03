@@ -37,8 +37,9 @@ object Pairing {
 
 data class ServiceState(val name:String,val namespace:String,val health:String,val sync:String,val cpu:Float?=null,val memory:Float?=null,val pods:Int=0,val ready:Int=0,val icon:String="",val url:String="",val resources:List<String> = emptyList(),val lastSync:String="")
 data class MonitorState(val id:String,val name:String,val type:String,val status:String,val responseMs:Float?,val uptime24h:Float?=null)
+data class QueueEntry(val title: String, val status: String, val progress: Double?)
 data class ServiceHealth(val source: String, val type: String, val message: String, val wikiUrl: String)
-data class ServiceWidgetState(val name:String,val kind:String,val fields:Map<String,Float?>,val time:String,val error:String,val health:List<ServiceHealth>?=null)
+data class ServiceWidgetState(val name:String,val kind:String,val fields:Map<String,Float?>,val time:String,val error:String,val health:List<ServiceHealth>?=null,val queue:List<QueueEntry>?=null)
 data class HistoryPolicy(val days: Int, val maxRecords: Int, val persistent: Boolean)
 data class SourceDelivery(val name:String,val count:Int,val lastReceived:String)
 
@@ -163,7 +164,7 @@ object LiveRepository {
         recentActivity=counts("recentActivity");recentActivityWithTests=counts("recentActivityWithTests")
         val ongoing=root.optJSONArray("active")?:org.json.JSONArray();active=(0 until ongoing.length()).map{event(ongoing.getJSONObject(it))}
         val sources=root.optJSONObject("signals")?:JSONObject();signals=sources.keys().asSequence().filter{!it.startsWith("resource:")}.associateWith{sources.optBoolean(it)}
-        val integrationsJSON=root.optJSONArray("integrations")?:org.json.JSONArray();integrations=(0 until integrationsJSON.length()).map{val i=integrationsJSON.getJSONObject(it);val f=i.optJSONObject("fields")?:JSONObject();ServiceWidgetState(i.getString("name"),i.getString("kind"),f.keys().asSequence().associateWith{key->if(f.isNull(key))null else f.optDouble(key).toFloat()},i.optString("time"),i.optString("error"),i.optJSONArray("health")?.let { health -> (0 until health.length()).mapNotNull { index -> health.optJSONObject(index)?.let { item -> ServiceHealth(item.optString("source"),item.optString("type"),item.optString("message"),item.optString("wikiUrl")) } } })}
+        val integrationsJSON=root.optJSONArray("integrations")?:org.json.JSONArray();integrations=(0 until integrationsJSON.length()).map{val i=integrationsJSON.getJSONObject(it);val f=i.optJSONObject("fields")?:JSONObject();ServiceWidgetState(i.getString("name"),i.getString("kind"),f.keys().asSequence().associateWith{key->if(f.isNull(key))null else f.optDouble(key).toFloat()},i.optString("time"),i.optString("error"),i.optJSONArray("health")?.let { health -> (0 until health.length()).mapNotNull { index -> health.optJSONObject(index)?.let { item -> ServiceHealth(item.optString("source"),item.optString("type"),item.optString("message"),item.optString("wikiUrl")) } } },i.optJSONArray("queue")?.let { queue -> (0 until queue.length()).mapNotNull { index -> queue.optJSONObject(index)?.let { item -> QueueEntry(item.optString("title"), item.optString("status"), item.optDouble("progress").takeIf { it in 0.0..100.0 }) } } })}
         val alerts=root.optJSONArray("issues")?:org.json.JSONArray();legacyIssues=(0 until alerts.length()).map{val item=alerts.getJSONObject(it);AttentionItem(item.getString("title"),item.getString("target"),item.getString("severity"))}
         backupVolumes=if(root.isNull("backupVolumes"))null else root.optInt("backupVolumes");backupRecorded=if(root.isNull("backupRecorded"))null else root.optInt("backupRecorded");backupLast=root.optString("backupLast")
         download=if(root.isNull("downloadMiB"))null else root.getDouble("downloadMiB").toFloat();backup=if(root.isNull("backupAvailable"))null else root.getBoolean("backupAvailable")
@@ -177,7 +178,7 @@ object LiveRepository {
                 .takeIf { it.days > 0 && it.maxRecords > 0 }
         }
         time=root.getString("time");lastSuccess=System.currentTimeMillis();state=if(root.getJSONArray("errors").length()>0)"Live · Partial data" else "Live"
-        if(newSample){monitors.forEach{record("monitor:${it.id}",it.responseMs)};record("cpu",cpuPercent);record("memory",memoryPercent);nodes.forEach{if(it.available){record("node:${it.name}",it.cpuPercent)}};services.forEach{record("app:${it.name}:cpu",it.cpu);record("app:${it.name}:memory",it.memory)}}
+        if(newSample){monitors.forEach{record("monitor:${it.id}",it.responseMs)};record("cpu",cpuPercent);record("memory",memoryPercent);nodes.forEach{if(it.available){record("node:${it.name}",it.cpuPercent);if(it.memoryTotalGiB>0)record("node-memory:${it.name}",it.memoryUsedGiB/it.memoryTotalGiB*100)}};services.forEach{record("app:${it.name}:cpu",it.cpu);record("app:${it.name}:memory",it.memory)}}
     }
     fun applyFrame(frame:String){val root=JSONObject(frame);apply(root.getJSONObject("snapshot").toString() to root.getJSONArray("events").toString())}
     fun checkFreshness(){if(state.startsWith("Live")&&lastSuccess>0&&System.currentTimeMillis()-lastSuccess>45000)state="Stale"}

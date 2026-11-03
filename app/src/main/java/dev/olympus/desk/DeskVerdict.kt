@@ -65,9 +65,9 @@ internal fun currentVerdict(): VerdictState {
 }
 
 @Composable
-internal fun VerdictMark(verdict: Verdict) {
+internal fun VerdictMark(verdict: Verdict, diameter: androidx.compose.ui.unit.Dp = 12.dp) {
     val accent = verdict.accent
-    Canvas(Modifier.size(12.dp)) {
+    Canvas(Modifier.size(diameter)) {
         val side = size.minDimension
         when (verdict) {
             Verdict.Calm -> drawCircle(accent)
@@ -97,28 +97,39 @@ internal fun AmbientDesk(state: VerdictState, openHome: () -> Unit) {
             }
         }
         val displacement = ((time.minute % 5) - 2).dp
-        Column(
+        val incident = state.incidents.firstOrNull()
+        val ambientText = Color(0xFF8B94A3)
+        val headline = when {
+            state.verdict != Verdict.Attention -> state.verdict.label
+            state.incidents.size == 1 -> "1 needs you"
+            else -> "${state.incidents.size} need you"
+        }
+        Box(
             Modifier.fillMaxSize().background(Color.Black)
                 .clickable(role = Role.Button, onClickLabel = "Open Home", onClick = openHome)
-                .offset(x = displacement, y = -displacement).padding(20.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center
+                .windowInsetsPadding(WindowInsets.displayCutout)
+                .offset(x = displacement, y = -displacement)
+                .padding(horizontal = 44.dp, vertical = 30.dp)
         ) {
-            val ambientText = Color(0xFF8B94A3)
-            Text(time.format(DateTimeFormatter.ofPattern("HH:mm")), color = ambientText, fontSize = 132.sp)
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                VerdictMark(state.verdict)
-                val headline = when {
-                    state.verdict != Verdict.Attention -> state.verdict.label
-                    state.incidents.size == 1 -> "1 incident needs you"
-                    else -> "${state.incidents.size} incidents need you"
+            val clockSize = if (incident == null) 132.sp else 56.sp
+            Text(time.format(DateTimeFormatter.ofPattern("HH:mm")), modifier = Modifier.align(if (incident == null) Alignment.Center else Alignment.TopCenter), color = ambientText,
+                fontSize = clockSize, lineHeight = clockSize, fontWeight = FontWeight.Bold)
+            Column(Modifier.align(if (incident == null) Alignment.BottomStart else Alignment.CenterStart),
+                verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                    VerdictMark(state.verdict, if (incident == null) 12.dp else 40.dp)
+                    Text(headline, color = if (incident == null) ambientText else state.verdict.accent,
+                        fontSize = if (incident == null) 26.sp else 58.sp, fontWeight = FontWeight.Bold)
                 }
-                Text(headline, color = if (state.incidents.isEmpty()) ambientText else state.verdict.accent,
-                    fontSize = 22.sp, fontWeight = FontWeight.SemiBold)
+                incident?.let {
+                    Text(listOf(incidentTitle(it), it.node).filter(String::isNotBlank).joinToString(" · "),
+                        color = DarkDesk.text, fontSize = 24.sp, maxLines = 2)
+                }
             }
-            state.incidents.firstOrNull()?.let {
-                Text(incidentTitle(it), color = ambientText, fontSize = 14.sp, maxLines = 2)
-            }
+            if (incident != null) Text("Tap anywhere to open", Modifier.align(Alignment.BottomStart),
+                color = ambientText, fontSize = 12.sp)
+            else Text("${LiveRepository.state} · dimmed", Modifier.align(Alignment.BottomEnd),
+                color = ambientText, fontSize = 12.sp)
         }
     }
 }

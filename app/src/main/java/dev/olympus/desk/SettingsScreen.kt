@@ -20,6 +20,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.semantics
@@ -58,7 +59,7 @@ internal val LocalGridGap=staticCompositionLocalOf{10}
  fun watchEnabled(enabled:Boolean){watch=enabled;prefs.edit().putBoolean("backgroundAlerts",enabled).apply();if(enabled)context.startForegroundService(android.content.Intent(context,AlertWatchService::class.java))else context.stopService(android.content.Intent(context,AlertWatchService::class.java))}
  val permission=androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.RequestPermission()){allowed->if(allowed)watchEnabled(true)else notificationError="Notification permission is required."}
  val pair=remember{Pairing.read(context)}
- var section by rememberSaveable{mutableStateOf(if (pair == null) "Connection" else "Display")}
+ var section by rememberSaveable{mutableStateOf(if (pair == null) "Connection" else "Overview")}
  LaunchedEffect(section){if(section=="Events")pair?.let{LiveRepository.loadDeliveries(it)}}
  val scope = rememberCoroutineScope()
  var scanned by remember { mutableStateOf<PairingCode?>(null) }
@@ -81,14 +82,53 @@ internal val LocalGridGap=staticCompositionLocalOf{10}
    Box(Modifier.fillMaxSize(),contentAlignment=Alignment.TopCenter){
     Column(Modifier.widthIn(max=640.dp).fillMaxWidth().fillMaxHeight().windowInsetsPadding(WindowInsets.displayCutout).imePadding().padding(horizontal=16.dp)){
      Row(Modifier.fillMaxWidth().height(52.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(8.dp)){
-      IconButton(onClick=close){LabGlyph("Back",DeskColors.text,23.dp)}
-      Text(if (pair == null) "Connect to Olympus" else "Settings",fontSize=22.sp,fontWeight=FontWeight.SemiBold,modifier=Modifier.weight(1f))
-      Text("v${BuildConfig.VERSION_NAME}",color=DeskColors.muted,fontSize=11.sp)
+      if (pair != null) IconButton(onClick={ if (section != "Overview") section = "Overview" else close() }, modifier = Modifier.size(44.dp).background(DeskColors.surface, RoundedCornerShape(22.dp)).semantics { contentDescription = "Back" }){LabGlyph("Back",DeskColors.text,23.dp)}
+      Text(if (pair == null) "Connect to Olympus" else if (section == "Events") "Notification channels" else "Settings",fontSize=22.sp,fontWeight=FontWeight.SemiBold,modifier=Modifier.weight(1f))
+
      }
-     if (pair != null) CompactTabs(listOf("Display","Home","Events","Connection"),section,{section=it;resetPending=false;scanning=false})
+
      key(section){
       Column(Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()).padding(top=8.dp,bottom=20.dp),verticalArrangement=Arrangement.spacedBy(10.dp)){
        when(section){
+        "Overview" -> {
+         CompanionPanel("Connection") {
+          SettingsValue("Backend", pair?.first ?: "Unpaired")
+          SettingsDivider()
+          SettingsValue("Status", LiveRepository.state)
+          SettingsDivider()
+          Box(Modifier.clickable { section = "Connection" }) { SettingsValue("Authentication", "Token") }
+         }
+         CompanionPanel("Layouts") {
+          SettingsAction("Portrait layout") { section = "Home" }
+          SettingsDivider()
+          SettingsAction("Landscape layout") { section = "Home" }
+         }
+         CompanionPanel("Display") {
+          SettingSwitch("Reduced motion", reduced) { bool("reducedMotion", it, setReduced) }
+          SettingsDivider()
+          Box(Modifier.clickable { section = "Events" }) { SettingsValue("Event display", "Group by source") }
+          SettingsDivider()
+          Box(Modifier.clickable { section = "Display" }) { SettingsValue("Navigation", "Rail on desk") }
+         }
+         CompanionPanel("Desk") {
+          SettingSwitch("Keep screen awake", awake) { bool("keepAwake", it, setAwake) }
+          SettingsDivider()
+          Box(Modifier.clickable { section = "Display" }) { SettingsValue("Dim after", "${prefs.getInt("ambientDelayMinutes", 5)} min") }
+
+         }
+         CompanionPanel("Integrations") {
+          val sources = LiveRepository.signals.entries.map { it.key to it.value } +
+           LiveRepository.integrations.map { it.name to it.error.isBlank() }
+          sources.chunked(if (wideWindow()) 4 else 2).forEach { row ->
+           Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            row.forEach { (name, available) ->
+             Box(Modifier.weight(1f)) { StatusPill(name, if (available) DeskColors.blue else DeskColors.muted) }
+            }
+            if (row.size == 1) Spacer(Modifier.weight(1f))
+           }
+          }
+         }
+        }
         "Display"->{
          @Composable fun screen(){Column(verticalArrangement=Arrangement.spacedBy(8.dp)){
           SettingsHeading("Screen")
@@ -147,7 +187,7 @@ internal val LocalGridGap=staticCompositionLocalOf{10}
          }
          SettingsGroup{SettingsRange("Widget spacing","${gap}dp",gap.toFloat(),6f..16f,9){val n=it.toInt();prefs.edit().putInt("gridGap",n).apply();setGap(n)}}
          SettingsGroup{
-          listOf("Edit Home","Add widget","Export layout","Import layout").forEachIndexed{i,action->if(i>0)SettingsDivider();SettingsAction(action){home(action)}}
+          listOf("Edit Home","Add widget","Export layout","Import layout","Restore previous layout").forEachIndexed{i,action->if(i>0)SettingsDivider();SettingsAction(action){home(action)}}
          }
          SettingsGroup{
           SettingsAction("Reset this layout",warning=true){resetPending=!resetPending}
@@ -166,16 +206,43 @@ internal val LocalGridGap=staticCompositionLocalOf{10}
          }
         }
         "Events"->{
-         SettingsHeading("Live alerts")
-         SettingsGroup{
+         CompanionPanel("") {
+          listOf(
+           Triple("criticalNotifications", "Critical", "Sound, heads-up, lock screen"),
+           Triple("warningNotifications", "Warning", "Silent, badge only"),
+           Triple("appNotifications", "Notices", "Silent, no badge"),
+           Triple("recoveryNotifications", "Resolved", "Off by default")
+          ).forEachIndexed { index, (key, label, detail) ->
+           if (index > 0) HorizontalDivider(color = DeskColors.raised)
+           var enabled by remember(key) { mutableStateOf(prefs.getBoolean(key, key != "recoveryNotifications")) }
+           SettingsToggle(label, detail, enabled) {
+            enabled = it
+            prefs.edit().putBoolean(key, it).apply()
+           }
+          }
+         }
+         CompanionPanel("Quiet hours") {
+          var quiet by remember { mutableStateOf(prefs.getBoolean("quietHours", false)) }
+          var start by remember { mutableIntStateOf(prefs.getInt("quietStart", 22)) }
+          var end by remember { mutableIntStateOf(prefs.getInt("quietEnd", 7)) }
+          var editingQuiet by rememberSaveable { mutableStateOf(false) }
+          SettingsAction("%02d:00 – %02d:00".format(start, end)) { editingQuiet = !editingQuiet }
+          Text(if (quiet) "Critical only" else "Off", color = DeskColors.muted, fontSize = 12.sp)
+          if (editingQuiet) {
+           SettingSwitch("Quiet hours", quiet) { quiet = it; prefs.edit().putBoolean("quietHours", it).apply() }
+           SettingsRange("From", "%02d:00".format(start), start.toFloat(), 0f..23f, 22) {
+            start = it.toInt()
+            prefs.edit().putInt("quietStart", start).apply()
+           }
+           SettingsRange("Until", "%02d:00".format(end), end.toFloat(), 0f..23f, 22) {
+            end = it.toInt()
+            prefs.edit().putInt("quietEnd", end).apply()
+           }
+          }
+         }
+         DeskDisclosure("Live alerts") {
           SettingSwitch("Background live alerts",watch){enabled->if(enabled&&android.os.Build.VERSION.SDK_INT>=33&&context.checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS)!=android.content.pm.PackageManager.PERMISSION_GRANTED)permission.launch(android.Manifest.permission.POST_NOTIFICATIONS)else watchEnabled(enabled)}
-          Text("Keeps a visible connection notification. Battery restrictions or lost Wi-Fi can interrupt delivery; this is a local live connection, not cloud push.",color=DeskColors.muted,fontSize=11.sp,modifier=Modifier.padding(12.dp))
-          var apps by remember{mutableStateOf(prefs.getBoolean("appNotifications",true))};var recoveries by remember{mutableStateOf(prefs.getBoolean("recoveryNotifications",false))};var quiet by remember{mutableStateOf(prefs.getBoolean("quietHours",false))}
-          SettingsDivider();SettingSwitch("App notifications",apps){apps=it;prefs.edit().putBoolean("appNotifications",it).apply()}
-          SettingsDivider();SettingSwitch("Recovery notifications",recoveries){recoveries=it;prefs.edit().putBoolean("recoveryNotifications",it).apply()}
-          SettingsDivider();SettingSwitch("Quiet hours",quiet){quiet=it;prefs.edit().putBoolean("quietHours",it).apply()}
-          if(quiet){var start by remember{mutableIntStateOf(prefs.getInt("quietStart",22))};var end by remember{mutableIntStateOf(prefs.getInt("quietEnd",7))};SettingsRange("From","%02d:00".format(start),start.toFloat(),0f..23f,22){start=it.toInt();prefs.edit().putInt("quietStart",start).apply()};SettingsRange("Until","%02d:00".format(end),end.toFloat(),0f..23f,22){end=it.toInt();prefs.edit().putInt("quietEnd",end).apply()}}
-
+          Text("Keeps a visible connection notification. Battery restrictions or lost Wi-Fi can interrupt delivery.",color=DeskColors.muted,fontSize=12.sp)
          }
          DeskDisclosure("Notification sources"){
           val available=((LiveRepository.active+LiveRepository.events).map{it.source}+LiveRepository.deliveries.map{it.name}).filter{it!="Test"}.distinct().sorted()
@@ -186,14 +253,12 @@ internal val LocalGridGap=staticCompositionLocalOf{10}
          if(notificationError.isNotBlank())Text(notificationError,color=DeskColors.apricot,fontSize=12.sp)
          SettingsHeading("Notifications")
          SettingsGroup{SettingSwitch("Show test notifications",tests){bool("showTests",it,setTests)};SettingsDivider();SettingsAction("Monitors"){monitors()}}
-         SettingsHeading("Recent webhook activity")
-         val received=LiveRepository.deliveries.filter{it.name !in listOf("Kubernetes","Prometheus","Argo CD","Test")}
-         SettingsGroup{
+         DeskDisclosure("Recent webhook activity") {
+          val received=LiveRepository.deliveries.filter{it.name !in listOf("Kubernetes","Prometheus","Argo CD","Test")}
           if(received.isEmpty())Text(if(LiveRepository.deliveryError)"Delivery history unavailable"else"No deliveries recorded",color=DeskColors.muted,fontSize=12.sp,modifier=Modifier.padding(12.dp))
           received.forEachIndexed{i,delivery->if(i>0)SettingsDivider();SettingsValue("${delivery.name} · ${delivery.count}",localTime(delivery.lastReceived))}
          }
-         SettingsHeading("Notification channels")
-         SettingsGroup {
+         DeskDisclosure("Android channel settings") {
           listOf(
            Triple("critical", "Critical", "Sound and heads-up"),
            Triple("warning", "Warning", "Silent · badge"),
@@ -237,7 +302,7 @@ internal val LocalGridGap=staticCompositionLocalOf{10}
         }
         "Connection"->{
          if (pair == null) Text(
-          "Open the pairing code from your Olympus backend. The code sets the address and read credential.",
+          "Open the pairing screen on your Olympus backend and scan the code. This sets the address and token for you.",
           color = DeskColors.muted, fontSize = 14.sp
          ) else SettingsGroup { SettingsValue("Connection", LiveRepository.state) }
          if (scanning) {
@@ -248,11 +313,13 @@ internal val LocalGridGap=staticCompositionLocalOf{10}
           }
           Text("Waiting for a code…", color = DeskColors.muted, fontSize = 12.sp)
          } else if (scanned == null) {
-          DeskAction("Scan pairing QR", primary = true, enabled = !pairingInProgress) {
+          if (pair == null && !manual) PairingViewfinder(onActivate = { camera.launch(android.Manifest.permission.CAMERA) })
+          else DeskAction("Scan pairing QR", primary = true, enabled = !pairingInProgress) {
            scanMessage = ""
            camera.launch(android.Manifest.permission.CAMERA)
           }
          }
+         if (pair == null && !manual && !scanning && scanned == null) Text("Tap the scanner to begin", color = DeskColors.muted, fontSize = 12.sp)
          scanned?.let { code ->
           Text("Connect to ${code.address}", color = DeskColors.text, fontSize = 14.sp)
           Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -278,7 +345,7 @@ internal val LocalGridGap=staticCompositionLocalOf{10}
           }
          }
          if (scanMessage.isNotBlank()) Text(scanMessage, color = DeskColors.apricot, fontSize = 12.sp)
-         if (!manual) DeskAction("Enter address manually") { scanning = false; manual = true }
+         if (!manual) Button(onClick = { scanning = false; manual = true }, modifier = Modifier.fillMaxWidth().heightIn(min = 44.dp), shape = RoundedCornerShape(24.dp)) { Text("Enter address manually", fontWeight = FontWeight.Bold) }
          if (manual) {
          SettingsHeading("Manual pairing")
          OutlinedTextField(value=url,onValueChange={url=it;error=""},label={Text("HTTPS address")},singleLine=true,modifier=Modifier.fillMaxWidth(),shape=RoundedCornerShape(12.dp))
@@ -302,15 +369,32 @@ internal val LocalGridGap=staticCompositionLocalOf{10}
 @Composable private fun SettingsHeading(text:String){Text(text,color=DeskColors.muted,fontSize=11.sp,fontWeight=FontWeight.Medium,modifier=Modifier.padding(top=4.dp,start=2.dp))}
 @Composable private fun SettingsGroup(content:@Composable ColumnScope.()->Unit){Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(DeskColors.surface),content=content)}
 @Composable private fun SettingsDivider(){HorizontalDivider(color=DeskColors.muted.copy(alpha=.1f),modifier=Modifier.padding(horizontal=12.dp))}
-@Composable private fun SettingSwitch(label:String,value:Boolean,change:(Boolean)->Unit){
- Row(Modifier.fillMaxWidth().heightIn(min=48.dp).toggleable(value=value,role=Role.Switch,onValueChange=change).padding(horizontal=12.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(12.dp)){
-  Text(label,Modifier.weight(1f),color=DeskColors.text,fontSize=13.sp);Box(Modifier.size(36.dp,22.dp).clip(RoundedCornerShape(12.dp)).background(if(value)DeskColors.cobalt else DeskColors.raised).padding(3.dp),contentAlignment=if(value)Alignment.CenterEnd else Alignment.CenterStart){Box(Modifier.size(16.dp).background(DeskColors.text,RoundedCornerShape(8.dp)))}
+@Composable private fun SettingSwitch(label: String, value: Boolean, change: (Boolean) -> Unit) =
+ SettingsToggle(label, "", value, change)
+
+@Composable private fun SettingsToggle(label: String, subtitle: String, value: Boolean, change: (Boolean) -> Unit) {
+ Row(
+  Modifier.fillMaxWidth().heightIn(min = 44.dp).toggleable(value = value, role = Role.Switch, onValueChange = change),
+  verticalAlignment = Alignment.CenterVertically,
+  horizontalArrangement = Arrangement.spacedBy(12.dp)
+ ) {
+  Column(Modifier.weight(1f)) {
+   Text(label, color = DeskColors.text, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+   if (subtitle.isNotEmpty()) Text(subtitle, color = DeskColors.muted, fontSize = 12.sp)
+  }
+  Box(
+   Modifier.size(52.dp, 32.dp).clip(RoundedCornerShape(16.dp))
+    .background(if (value) DeskColors.blue else DeskColors.raised).padding(4.dp),
+   contentAlignment = if (value) Alignment.CenterEnd else Alignment.CenterStart
+  ) {
+   Box(Modifier.size(24.dp).background(if (value) MaterialTheme.colorScheme.onPrimary else DeskColors.muted, RoundedCornerShape(12.dp)))
+  }
  }
 }
 @Composable private fun SettingsAction(label:String,warning:Boolean=false,click:()->Unit){
- Row(Modifier.fillMaxWidth().heightIn(min=48.dp).clickable(onClick=click).padding(horizontal=12.dp),verticalAlignment=Alignment.CenterVertically){Text(label,color=if(warning)DeskColors.apricot else DeskColors.text,fontSize=13.sp,modifier=Modifier.weight(1f));Text("›",color=DeskColors.muted,fontSize=21.sp)}
+ Row(Modifier.fillMaxWidth().heightIn(min=48.dp).clickable(onClick=click).padding(horizontal=12.dp),verticalAlignment=Alignment.CenterVertically){Text(label,color=if(warning)DeskColors.apricot else DeskColors.text,fontSize=14.sp,fontWeight=FontWeight.Bold,modifier=Modifier.weight(1f));Text("›",color=DeskColors.muted,fontSize=21.sp)}
 }
-@Composable private fun SettingsValue(label:String,value:String){Row(Modifier.fillMaxWidth().padding(12.dp),horizontalArrangement=Arrangement.spacedBy(12.dp)){Text(label,color=DeskColors.muted,fontSize=12.sp,modifier=Modifier.weight(1f));Text(value,color=DeskColors.text,fontSize=12.sp,modifier=Modifier.weight(1f),textAlign=TextAlign.End)}}
+@Composable private fun SettingsValue(label:String,value:String){Row(Modifier.fillMaxWidth().padding(12.dp),horizontalArrangement=Arrangement.spacedBy(12.dp)){Text(label,color=DeskColors.text,fontSize=14.sp,fontWeight=FontWeight.Bold,modifier=Modifier.weight(1f));Text(value,color=DeskColors.muted,fontSize=12.sp,modifier=Modifier.weight(1f),textAlign=TextAlign.End)}}
 @Composable private fun SettingsRange(label:String,value:String,current:Float,range:ClosedFloatingPointRange<Float>,steps:Int=0,change:(Float)->Unit){
  Column(Modifier.fillMaxWidth().padding(horizontal=12.dp,vertical=6.dp)){
   Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically){Text(label,color=DeskColors.text,fontSize=13.sp,modifier=Modifier.weight(1f));Text(value,color=DeskColors.blue,fontSize=12.sp,fontWeight=FontWeight.SemiBold)}
@@ -323,33 +407,98 @@ internal val LocalGridGap=staticCompositionLocalOf{10}
  }
 }
 
-@Composable internal fun MonitorScreen(open:(String)->Unit={}){
- var search by remember{mutableStateOf("")};var status by remember{mutableStateOf("All")}
- if(wideWindow())Row(verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(10.dp)){Box(Modifier.weight(1f)){DeskSearch(search,{search=it},"Search monitors")};Box(Modifier.width(350.dp)){CompactTabs(listOf("All","Up","Down","Pending","Maintenance"),status,{status=it})}}
- else {DeskSearch(search,{search=it},"Search monitors");CompactTabs(listOf("All","Up","Down","Pending","Maintenance"),status,{status=it})}
- val monitors = LiveRepository.monitors
- if (monitors.isNotEmpty()) CompanionPanel("Uptime Kuma") {
-  val up = monitors.count { it.status == "Up" }
-  val down = monitors.count { it.status == "Down" }
-  Text("$up up · $down down · ${monitors.size - up - down} other", color = DeskColors.text, fontSize = 14.sp)
+@Composable
+internal fun ServicesTabs(selected: String, select: (String) -> Unit) {
+ Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+  listOf("Monitors", "Apps").forEach { label ->
+   val active = label == selected
+   Box(
+    Modifier.heightIn(min = 32.dp).clip(RoundedCornerShape(16.dp))
+     .background(if (active) DeskColors.blue.copy(alpha = .18f) else DeskColors.raised)
+     .selectable(selected = active, role = Role.Tab, onClick = { select(label) }).padding(horizontal = 12.dp),
+    contentAlignment = Alignment.Center
+   ) {
+    Text(label, color = if (active) DeskColors.blue else DeskColors.text, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+   }
+  }
  }
- val rows=LiveRepository.monitors.filter{it.name.contains(search,true)&&(status=="All"||it.status==status)}
- if(LiveRepository.monitors.isEmpty())Text("Monitor readings unavailable",modifier=Modifier.padding(16.dp),color=DeskColors.muted)
- val columns=if(wideWindow())2 else 1
- rows.chunked(columns).forEach{group->Row(Modifier.fillMaxWidth().padding(vertical=4.dp),horizontalArrangement=Arrangement.spacedBy(10.dp)){
-  group.forEach{m->Row(Modifier.weight(1f).clip(RoundedCornerShape(14.dp)).background(DeskColors.surface).clickable{open(m.id)}.padding(14.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(10.dp)){
-   Box(Modifier.size(7.dp).background(if(m.status=="Up")DeskColors.green else DeskColors.apricot,RoundedCornerShape(4.dp)))
-   Column(Modifier.weight(1f)){Text(m.name,fontSize=13.sp,maxLines=1);Text("${m.type} · ${m.status}",color=DeskColors.muted,fontSize=11.sp)}
-   Column(horizontalAlignment = Alignment.End) {
-    Text(m.responseMs?.let { "${it.toInt()} ms" } ?: "Latency unavailable", color = DeskColors.text, fontSize = 13.sp)
-    m.uptime24h?.let { ratio ->
-     Text(String.format(java.util.Locale.US, "%.1f%% · 24 h uptime", ratio * 100), color = DeskColors.muted, fontSize = 11.sp)
+}
+
+@Composable internal fun MonitorScreen(openIntegration: ((String) -> Unit)? = null, open: (String) -> Unit = {}) {
+ var search by rememberSaveable { mutableStateOf("") }
+ var status by rememberSaveable { mutableStateOf("All") }
+ var showAll by rememberSaveable { mutableStateOf(openIntegration == null) }
+ val monitors = LiveRepository.monitors
+ if (monitors.isEmpty()) {
+  DeskEmpty("Monitor readings unavailable")
+  return
+ }
+ CompanionPanel("") {
+  Row(Modifier.fillMaxWidth()) {
+   listOf("Up", "Down", "Unknown").forEach { state ->
+    Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
+     Text(monitors.count { it.status == state }.toString(),
+      color = if (state == "Down") DeskColors.apricot else DeskColors.text,
+      fontSize = 32.sp, fontWeight = FontWeight.Bold)
+     Text(state, color = DeskColors.muted, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
     }
    }
-  }}
-  if(group.size<columns)Spacer(Modifier.weight(1f))
- }}
-
+  }
+  val other = monitors.groupingBy { it.status }.eachCount().filterKeys { it !in listOf("Up", "Down", "Unknown") }
+  if (other.isNotEmpty()) Text(other.entries.joinToString(" · ") { "${it.value} ${it.key.lowercase()}" },
+   color = DeskColors.muted, fontSize = 12.sp)
+ }
+ if (showAll) DeskDisclosure("Filter monitors") {
+  DeskSearch(search, { search = it }, "Search monitors")
+  DeskSegments(listOf("All", "Up", "Down", "Unknown", "Pending", "Maintenance"), status, { status = it })
+ }
+ CompanionPanel("Uptime Kuma") {
+  val matches = monitors.filter { it.name.contains(search, true) && (status == "All" || it.status == status) }
+  val rows = if (showAll) matches else matches.sortedBy { if (it.status == "Down") 0 else 1 }.take(4)
+  if (rows.isEmpty()) Text("No matching monitors", color = DeskColors.muted, fontSize = 13.sp)
+  rows.forEachIndexed { index, monitor ->
+   if (index > 0) HorizontalDivider(color = DeskColors.raised)
+   Row(Modifier.fillMaxWidth().heightIn(min = 44.dp).clickable { open(monitor.id) }.padding(vertical = 4.dp),
+    horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
+    VerdictMark(when (monitor.status) { "Up" -> Verdict.Calm; "Down" -> Verdict.Attention; else -> Verdict.Unknown })
+    Column(Modifier.weight(1f)) {
+     Text(monitor.name, color = DeskColors.text, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+     val uptime = monitor.uptime24h?.let { String.format(java.util.Locale.US, "24 h %.1f%%", it * 100) }
+     Text(listOfNotNull(monitor.status, uptime).joinToString(" · "), color = DeskColors.muted, fontSize = 12.sp)
+    }
+    Text(if (monitor.status == "Down") "Down" else monitor.responseMs?.let { "${it.toInt()} ms" } ?: "—",
+     color = if (monitor.status == "Down") DeskColors.apricot else DeskColors.text,
+     fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+   }
+  }
+ }
+ if (openIntegration != null) {
+  val arr = LiveRepository.integrations.filter { it.kind in listOf("radarr", "sonarr") }.groupBy { it.kind }
+   .map { (_, instances) -> instances.first() }
+  if (arr.isNotEmpty()) Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+   arr.forEach { app ->
+    Box(Modifier.weight(1f).clickable { openIntegration(app.name) }) {
+     CompanionPanel("") {
+      Text(app.name.replaceFirstChar { it.titlecase() }, color = DeskColors.text, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+      val queued = app.fields["Queued"]
+      Text(
+       when {
+        app.error.isNotBlank() && queued == null -> "API unavailable"
+        queued != null -> "${queued.toInt()} in queue"
+        else -> "Queue unavailable"
+       },
+       color = DeskColors.muted, fontSize = 12.sp
+      )
+     }
+    }
+   }
+   if (arr.size == 1) Spacer(Modifier.weight(1f))
+  }
+  if (monitors.size > 4) DeskAction(if (showAll) "Show fewer monitors" else "Show all monitors") {
+   showAll = !showAll
+   if (!showAll) { search = ""; status = "All" }
+  }
+ }
 }
 
 @Composable internal fun ImmersiveDialogWindow(){
@@ -382,19 +531,47 @@ private fun PairingCamera(onCode: (String) -> Unit) {
    barcode.pause()
   }
  }
- val color = DeskColors.blue
- Box(Modifier.fillMaxWidth().height(if (wideWindow()) 168.dp else 300.dp).clip(RoundedCornerShape(24.dp))) {
+ PairingViewfinder {
   AndroidView(factory = { barcode }, modifier = Modifier.fillMaxSize())
+ }
+}
+
+@Composable
+private fun PairingViewfinder(onActivate: (() -> Unit)? = null, preview: (@Composable () -> Unit)? = null) {
+ val color = DeskColors.blue
+ val square = DeskColors.raised
+ val action = if (onActivate == null) Modifier else Modifier.clickable(onClickLabel = "Scan pairing QR", onClick = onActivate)
+ Box(Modifier.fillMaxWidth().height(if (wideWindow()) 168.dp else 300.dp)
+  .clip(RoundedCornerShape(24.dp)).background(DeskColors.surface).then(action)
+  .semantics { if (onActivate != null) contentDescription = "Scan pairing QR" }) {
+  preview?.invoke()
   Canvas(Modifier.fillMaxSize()) {
-   val margin = 22.dp.toPx()
-   val length = 28.dp.toPx()
-   val width = 3.dp.toPx()
+   if (preview == null) {
+    val step = 12.dp.toPx()
+    val columns = minOf(17, (size.width / step).toInt())
+    val rows = if (size.height < 240.dp.toPx()) 6 else 12
+    val left = (size.width - columns * step) / 2
+    val top = (size.height - rows * step) / 2
+    for (row in 0 until rows) for (column in 0 until columns) {
+     if ((row + column) % 2 == 0) drawRect(
+      square, androidx.compose.ui.geometry.Offset(left + column * step, top + row * step),
+      androidx.compose.ui.geometry.Size(step, step)
+     )
+    }
+   }
+   val inset = 28.dp.toPx()
+   val length = 32.dp.toPx()
    for (left in listOf(true, false)) for (top in listOf(true, false)) {
-    val x = if (left) margin else size.width - margin
-    val y = if (top) margin else size.height - margin
-    val corner = androidx.compose.ui.geometry.Offset(x, y)
-    drawLine(color, corner, corner.copy(x = x + if (left) length else -length), width)
-    drawLine(color, corner, corner.copy(y = y + if (top) length else -length), width)
+    drawRoundRect(
+     color = color,
+     topLeft = androidx.compose.ui.geometry.Offset(
+      if (left) inset else size.width - inset - length,
+      if (top) inset else size.height - inset - length
+     ),
+     size = androidx.compose.ui.geometry.Size(length, length),
+     cornerRadius = androidx.compose.ui.geometry.CornerRadius(7.dp.toPx()),
+     style = androidx.compose.ui.graphics.drawscope.Stroke(4.dp.toPx())
+    )
    }
   }
  }

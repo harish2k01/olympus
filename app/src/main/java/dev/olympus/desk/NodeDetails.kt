@@ -50,24 +50,29 @@ private fun JSONArray?.objects()=(0 until (this?.length()?:0)).map{this!!.getJSO
  }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable internal fun NodeDetailScreen(name:String,open:(String)->Unit={}){
  val context=LocalContext.current
  val scope=rememberCoroutineScope()
  LaunchedEffect(name){Pairing.read(context)?.let{LiveRepository.loadNode(it,name)}}
  val metric=LiveRepository.nodes.find{it.name==name}
- if(metric!=null){
-  val wide=wideWindow()
-  @Composable fun cpu(){Column(Modifier.fillMaxWidth().background(DetailCard,RoundedCornerShape(14.dp)).padding(horizontal=12.dp,vertical=10.dp)){Usage("CPU · ${metric.cores} cores",if(metric.available)metric.cpuPercent else null,DeskColors.blue)}}
-  @Composable fun memory(){Column(Modifier.fillMaxWidth().background(DetailCard,RoundedCornerShape(14.dp)).padding(horizontal=12.dp,vertical=10.dp)){Usage("Memory · ${amount(metric.memoryUsedGiB*1073741824.0,"memory")} / ${amount(metric.memoryTotalGiB*1073741824.0,"memory")}",if(metric.available)metric.memoryUsedGiB/metric.memoryTotalGiB*100 else null,DeskColors.lilac)}}
-  if(wide)Row(Modifier.padding(top=6.dp,bottom=6.dp),horizontalArrangement=Arrangement.spacedBy(10.dp)){Box(Modifier.weight(1f)){cpu()};Box(Modifier.weight(1f)){memory()}}
-  else Column(Modifier.padding(top=6.dp,bottom=6.dp),verticalArrangement=Arrangement.spacedBy(8.dp)){cpu();memory()}
- }
-
  var section by rememberSaveable(name){mutableStateOf("Overview")}
- CompactTabs(listOf("Overview","Workloads","Metrics","Events"),section,{section=it}){scope.launch{Pairing.read(context)?.let{LiveRepository.loadNode(it,name)}}}
+ @Composable fun sectionTabs() {
+  CompactTabs(listOf("Overview","Workloads","Metrics","Events"),section,{section=it}){
+   scope.launch{Pairing.read(context)?.let{LiveRepository.loadNode(it,name)}}
+  }
+ }
+ if (section != "Overview") sectionTabs()
 
  val details=LiveRepository.nodeDetails
- if(details==null){Text(if(LiveRepository.nodeError)"Node details unavailable"else"Loading…",color=DetailMuted,modifier=Modifier.padding(20.dp));return}
+ if (details == null) {
+  Text(if (LiveRepository.nodeError) "Node details unavailable" else "Loading…",
+   color = DetailMuted, modifier = Modifier.padding(20.dp))
+  if (LiveRepository.nodeError) DeskAction("Retry") {
+   scope.launch { Pairing.read(context)?.let { LiveRepository.loadNode(it, name) } }
+  }
+  return
+ }
  val node=details.getJSONObject("node");val status=node.getJSONObject("Status");val spec=node.getJSONObject("Spec")
  when(section){
   "Overview"->{
@@ -77,18 +82,43 @@ private fun JSONArray?.objects()=(0 until (this?.length()?:0)).map{this!!.getJSO
    val workloads = details.optJSONArray("workloads").objects()
    val problemPods = workloads.filter { it.optInt("restarts") > 0 || it.optInt("ready") < it.optInt("containers") }
     .sortedWith(compareBy({ it.optInt("ready") >= it.optInt("containers") }, { -it.optInt("restarts") }))
-   @Composable fun conditionSummary() {
-    CompanionPanel("Node condition") {
-     val summary = when {
-      !LiveRepository.state.startsWith("Live") -> "Current readiness unconfirmed"
-      readiness == "False" -> "Node is not ready"
-      readiness != "True" -> "Readiness unconfirmed"
-      pressure.isNotEmpty() -> "${pressure.first().optString("type")} active · still Ready"
-      else -> "Node is Ready"
+   val memoryUsage = metric?.takeIf { it.available && it.memoryTotalGiB > 0 }
+    ?.let { it.memoryUsedGiB / it.memoryTotalGiB * 100 }
+   val live = LiveRepository.state.startsWith("Live")
+   val verdict = when {
+    !live || readiness == null || readiness == "Unknown" -> Verdict.Unknown
+    readiness == "False" || pressure.isNotEmpty() || (memoryUsage ?: 0f) >= 75f -> Verdict.Attention
+    else -> Verdict.Calm
+   }
+   val summary = when {
+    verdict == Verdict.Unknown -> "Readiness unconfirmed"
+    readiness == "False" -> "Node is not ready"
+    pressure.isNotEmpty() -> "${pressure.first().optString("type")} active, still Ready"
+    verdict == Verdict.Attention -> "High memory use, still Ready"
+    else -> "Node is Ready"
+   }
+   @Composable fun nodeSummary() {
+    val warning = verdict == Verdict.Attention
+    Column(
+     Modifier.fillMaxWidth().padding(vertical = 4.dp).clip(RoundedCornerShape(24.dp))
+      .background(if (warning) DeskColors.attentionSurface else DeskColors.surface).padding(14.dp),
+     verticalArrangement = Arrangement.spacedBy(6.dp)
+    ) {
+     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+      VerdictMark(verdict)
+      Text(when (verdict) {
+       Verdict.Attention -> "Needs a look"
+       Verdict.Calm -> "Ready"
+       else -> "Status unknown"
+      }, color = if (warning) DeskColors.onAttention else DetailMuted, fontSize = 12.sp)
      }
-     Text(summary, color = DetailPaper, fontSize = 22.sp, fontWeight = FontWeight.SemiBold)
-     if (problemPods.isNotEmpty()) Text("${problemPods.size} pods with restarts or unready containers",
-      color = DetailMuted, fontSize = 12.sp)
+     Text(summary, color = if (warning) DeskColors.onAttention else DetailPaper,
+      fontSize = 27.sp, lineHeight = 28.sp, fontWeight = FontWeight.Bold)
+     val observations = listOfNotNull(
+      memoryUsage?.let { "${if (live) "" else "Last reported "}${clusterPercentage(it)} of memory in use." },
+      problemPods.size.takeIf { it > 0 }?.let { "$it pods with restarts or unready containers." }
+     )
+     if (observations.isNotEmpty()) Text(observations.joinToString(" "), color = DetailMuted, fontSize = 12.sp)
     }
    }
    @Composable fun problemWorkloads() {
@@ -102,36 +132,117 @@ private fun JSONArray?.objects()=(0 until (this?.length()?:0)).map{this!!.getJSO
        horizontalArrangement = Arrangement.SpaceBetween,
        verticalAlignment = Alignment.CenterVertically
       ) {
-       Text(podName, color = DetailPaper, fontSize = 12.sp, modifier = Modifier.weight(1f))
-       val restarts = pod.optInt("restarts")
-       Text(if (restarts == 1) "1 recorded restart" else "$restarts recorded restarts", color = DetailMuted, fontSize = 11.sp)
+       VerdictMark(Verdict.Attention)
+       Column(Modifier.weight(1f).padding(horizontal = 12.dp)) {
+        Text(podName, color = DetailPaper, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+        val restarts = pod.optInt("restarts")
+        val status = if (restarts > 0) "$restarts recorded ${if (restarts == 1) "restart" else "restarts"}"
+         else "${pod.optInt("ready")}/${pod.optInt("containers")} containers ready"
+        Text(status, color = DetailMuted, fontSize = 12.sp)
+       }
+       Text("›", color = DetailPaper, fontSize = 20.sp)
       }
      }
     }
    }
-   if (wideWindow()) Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-    Column(Modifier.weight(1f)) { conditionSummary() }
-    Column(Modifier.weight(1f)) { problemWorkloads() }
+   @Composable fun nodeResources() {
+    CompanionPanel("Resources") {
+     val allocations = details.optJSONArray("allocations").objects()
+     for (resource in listOf("cpu", "memory")) {
+      val label = if (resource == "cpu") "CPU" else "Memory"
+      val allocation = allocations.firstOrNull { it.optString("resource") == resource }
+      val used = metric?.takeIf { it.available }?.let {
+       if (resource == "cpu") it.cpuPercent
+       else memoryUsage
+      }
+      val values = listOf(
+       "used" to used,
+       "requested" to allocation?.optDouble("requestPercent")?.takeIf { it.isFinite() }?.toFloat(),
+       "limits" to allocation?.optDouble("limitPercent")?.takeIf { it.isFinite() }?.toFloat()
+      )
+      for ((kind, value) in values) {
+       Row(Modifier.fillMaxWidth().heightIn(min = 24.dp), verticalAlignment = Alignment.CenterVertically) {
+        Text("$label $kind", Modifier.weight(1f), color = DetailMuted, fontSize = 12.sp)
+        ClusterResourceBar(value, Modifier.weight(1.5f))
+        Text(clusterPercentage(value), Modifier.padding(start = 12.dp).width(42.dp),
+         color = DetailPaper, fontSize = 12.sp, textAlign = androidx.compose.ui.text.style.TextAlign.End)
+       }
+      }
+     }
+     Text("Usage is measured against node capacity. Requests and limits use allocatable resources.", color = DetailMuted, fontSize = 12.sp)
+    }
+   }
+   @Composable fun nodeConditions() {
+    CompanionPanel("Conditions") {
+     FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+      conditions.forEach { condition ->
+       val type = condition.optString("type")
+       val state = condition.optString("status")
+       val label = when (state) {
+        "True" -> type
+        "False" -> "$type off"
+        else -> "$type unknown"
+       }
+       val healthy = (type == "Ready" && state == "True") || (type.endsWith("Pressure") && state == "False")
+       Row(Modifier.clip(RoundedCornerShape(16.dp)).background(DeskColors.raised).padding(horizontal = 12.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+        VerdictMark(if (!live || state == "Unknown") Verdict.Unknown else if (healthy) Verdict.Calm else Verdict.Attention, 10.dp)
+        Text(label, color = DetailPaper, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+       }
+      }
+     }
+    }
+   }
+   val addresses = status.optJSONArray("Addresses").objects()
+   val system = status.optJSONObject("NodeInfo") ?: JSONObject()
+   val taints = spec.optJSONArray("Taints").objects()
+   @Composable fun nodeFacts() {
+    CompanionPanel("Details") {
+     val detailsLine = listOf(
+      addresses.firstOrNull { it.optString("type") == "InternalIP" }?.optString("address").orEmpty(),
+      system.optString("kubeletVersion").takeIf { it.isNotBlank() }?.let { "Kubernetes $it" }.orEmpty(),
+      system.optString("osImage")
+     ).filter { it.isNotBlank() }.joinToString(" · ")
+     if (detailsLine.isNotBlank()) Text(detailsLine, color = DetailPaper, fontSize = 13.sp)
+     FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+      metric?.role?.takeIf { it.isNotBlank() }?.let { StatusPill("role=$it", DeskColors.blue) }
+      StatusPill(if (taints.isEmpty()) "No taints" else "${taints.size} taints", DeskColors.blue)
+     }
+    }
+   }
+   if (wideWindow()) {
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+     Column(Modifier.weight(1f)) {
+      nodeSummary()
+      nodeConditions()
+      nodeFacts()
+     }
+     Column(Modifier.weight(1.15f)) {
+      nodeResources()
+      problemWorkloads()
+     }
+    }
    } else {
-    conditionSummary()
+    nodeSummary()
+    nodeResources()
+    nodeConditions()
     problemWorkloads()
+    nodeFacts()
    }
-   Row(Modifier.fillMaxWidth().padding(vertical=4.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.SpaceBetween){
-    StatusPill(if(metric?.ready==true)"Ready"else"Readiness unconfirmed",if(metric?.ready==true)DeskColors.green else DeskColors.apricot)
-    Text("${conditions.size} conditions",color=DetailMuted,fontSize=11.sp)
-   }
-   DetailTable("Conditions",listOf("Type","Status","Reason"),listOf(170,75,230),conditions.map{c->listOf(c.optString("type"),c.optString("status"),c.optString("reason"))})
-   DeskDisclosure("Condition timestamps & messages"){
-   DetailTable("Conditions",listOf("Type","Status","Last heartbeat","Last transition","Reason","Message"),listOf(170,75,165,165,230,330),status.optJSONArray("Conditions").objects().map{c->listOf(c.optString("type"),c.optString("status"),localTime(c.optString("lastHeartbeatTime")),localTime(c.optString("lastTransitionTime")),c.optString("reason"),c.optString("message"))})
-   }
-   val capacity=status.optJSONObject("Capacity")?:JSONObject();val allocatable=status.optJSONObject("Allocatable")?:JSONObject()
-   DetailTable("Capacity & allocatable",listOf("Resource","Capacity","Allocatable"),listOf(185,210,210),capacity.keys().asSequence().sorted().map{key->listOf(key,capacity.optString(key),allocatable.optString(key))}.toList())
-   Text("Requests and limits use allocatable resources. Limits can exceed 100%.", color = DetailMuted, fontSize = 12.sp)
-   DetailTable("Allocated resources",listOf("Resource","Requests","Limits"),listOf(185,210,210),details.optJSONArray("allocations").objects().sortedBy{it.optString("resource")}.filter{it.optString("resource")!="pods"}.map{row->val key=row.optString("resource");listOf(key,amount(row.optDouble("requests"),key)+percentage(row,"requestPercent"),amount(row.optDouble("limits"),key)+percentage(row,"limitPercent"))})
-   DetailTable("Addresses",listOf("Type","Address"),listOf(180,350),status.optJSONArray("Addresses").objects().map{listOf(it.optString("type"),it.optString("address"))})
-   val system=status.optJSONObject("NodeInfo")?:JSONObject();val names=linkedMapOf("osImage" to "OS image","kernelVersion" to "Kernel","operatingSystem" to "Operating system","architecture" to "Architecture","containerRuntimeVersion" to "Container runtime","kubeletVersion" to "Kubelet","kubeProxyVersion" to "Kube proxy")
-   DetailTable("System",listOf("Field","Value"),listOf(210,420),names.map{(key,label)->listOf(label,system.optString(key))}+listOf(listOf("Pod CIDR",spec.optString("PodCIDR")),listOf("Scheduling",if(spec.optBoolean("Unschedulable"))"Cordoned"else"Enabled")))
+   sectionTabs()
+   DeskDisclosure("Advanced node details") {
+    DeskDisclosure("Condition timestamps & messages"){
+    DetailTable("Conditions",listOf("Type","Status","Last heartbeat","Last transition","Reason","Message"),listOf(170,75,165,165,230,330),status.optJSONArray("Conditions").objects().map{c->listOf(c.optString("type"),c.optString("status"),localTime(c.optString("lastHeartbeatTime")),localTime(c.optString("lastTransitionTime")),c.optString("reason"),c.optString("message"))})
+    }
+    val capacity=status.optJSONObject("Capacity")?:JSONObject();val allocatable=status.optJSONObject("Allocatable")?:JSONObject()
+    DetailTable("Capacity & allocatable",listOf("Resource","Capacity","Allocatable"),listOf(185,210,210),capacity.keys().asSequence().sorted().map{key->listOf(key,capacity.optString(key),allocatable.optString(key))}.toList())
+    Text("Requests and limits use allocatable resources. Limits can exceed 100%.", color = DetailMuted, fontSize = 12.sp)
+    DetailTable("Allocated resources",listOf("Resource","Requests","Limits"),listOf(185,210,210),details.optJSONArray("allocations").objects().sortedBy{it.optString("resource")}.filter{it.optString("resource")!="pods"}.map{row->val key=row.optString("resource");listOf(key,amount(row.optDouble("requests"),key)+percentage(row,"requestPercent"),amount(row.optDouble("limits"),key)+percentage(row,"limitPercent"))})
+    DetailTable("Addresses",listOf("Type","Address"),listOf(180,350),status.optJSONArray("Addresses").objects().map{listOf(it.optString("type"),it.optString("address"))})
+    val names=linkedMapOf("osImage" to "OS image","kernelVersion" to "Kernel","operatingSystem" to "Operating system","architecture" to "Architecture","containerRuntimeVersion" to "Container runtime","kubeletVersion" to "Kubelet","kubeProxyVersion" to "Kube proxy")
+    DetailTable("System",listOf("Field","Value"),listOf(210,420),names.map{(key,label)->listOf(label,system.optString(key))}+listOf(listOf("Pod CIDR",spec.optString("PodCIDR")),listOf("Scheduling",if(spec.optBoolean("Unschedulable"))"Cordoned"else"Enabled")))
    DeskDisclosure("Labels, taints & identifiers"){val labels=node.getJSONObject("Metadata").optJSONObject("Labels")?:JSONObject();DetailTable("Labels",listOf("Key","Value"),listOf(370,350),labels.keys().asSequence().sorted().map{listOf(it,labels.optString(it))}.toList());DetailTable("Taints",listOf("Key","Value","Effect"),listOf(290,200,200),spec.optJSONArray("Taints").objects().map{listOf(it.optString("key"),it.optString("value"),it.optString("effect"))});DetailTable("Identifiers",listOf("Field","Value"),listOf(180,450),listOf("machineID","systemUUID","bootID").map{listOf(it,system.optString(it))})}
+   }
   }
   "Workloads"->{
    details.optJSONArray("workloads").objects().sortedBy{it.optString("name")}.forEach{pod->
