@@ -200,18 +200,24 @@ private fun stamp(value:String)=try{DateTimeFormatter.ofPattern("dd MMM · HH:mm
      page=="Apps"->Apps{detail="app:$it"}
      page=="Monitors"->MonitorScreen{detail="monitor:$it"}
      else->{
-      if(!editing) HomeVerdict { incident ->
+      val openIncident: (LabEvent) -> Unit = { incident ->
        tab="Inbox"
        selectedEvent=incident
        detail="event:${incident.id}"
        detailHistory=arrayListOf()
       }
       val selected=widgets.find{it.id==selectedWidgetId}?:widgets.firstOrNull()
-      @Composable fun canvas(){WidgetGrid(widgets,wide,editing,selected?.id.orEmpty(),reducedMotion,(viewport-108.dp).coerceAtLeast(0.dp),wide&&!editing,{editing=true},::save,{destination->when(destination){"Nodes","Apps"->{tab="Cluster";clusterSection=if(destination=="Nodes")"Nodes"else"Applications"};"Monitors"->{tab="Services";servicesSection="Monitors"};"Events","Attention"->tab="Inbox";else->detail=destination}},{selectedWidgetId=it.id})}
-      if(editing&&wide)Row(horizontalArrangement=Arrangement.spacedBy(16.dp)){
+      @Composable fun canvas(){WidgetGrid(widgets,wide,editing,selected?.id.orEmpty(),reducedMotion,(viewport-12.dp).coerceAtLeast(0.dp),wide&&!editing,{editing=true},::save,{destination->when(destination){"Nodes","Apps"->{tab="Cluster";clusterSection=if(destination=="Nodes")"Nodes"else"Applications"};"Monitors"->{tab="Services";servicesSection="Monitors"};"Events","Attention"->tab="Inbox";else->detail=destination}},{selectedWidgetId=it.id})}
+      if(!editing&&wide) Row(
+       Modifier.fillMaxWidth(), horizontalArrangement=Arrangement.spacedBy(8.dp)
+      ){
+       HomeVerdict(openIncident,Modifier.weight(1f).heightIn(min=180.dp))
+       Box(Modifier.weight(3f)){canvas()}
+      }
+      else if(editing&&wide)Row(horizontalArrangement=Arrangement.spacedBy(16.dp)){
        Box(Modifier.weight(1f)){canvas()}
        Column(Modifier.width(244.dp)){selected?.let{EditorInspector(it,widgets,wide,::save,{configuring=it},{save(widgets.filterNot{w->w.id==it.id})})}}
-      }else{canvas();if(editing)selected?.let{EditorInspector(it,widgets,wide,::save,{configuring=it},{save(widgets.filterNot{w->w.id==it.id})})}}
+      }else{if(!editing) HomeVerdict(openIncident);canvas();if(editing)selected?.let{EditorInspector(it,widgets,wide,::save,{configuring=it},{save(widgets.filterNot{w->w.id==it.id})})}}
      }
     }
    }
@@ -248,7 +254,7 @@ private fun stamp(value:String)=try{DateTimeFormatter.ofPattern("dd MMM · HH:mm
 
 }
 
-@Composable private fun HomeVerdict(open: (LabEvent) -> Unit) {
+@Composable private fun HomeVerdict(open: (LabEvent) -> Unit, modifier: Modifier = Modifier.fillMaxWidth()) {
  val state = LiveRepository.state
  val connected = state.startsWith("Live")
  val firing = if (connected) LiveRepository.active
@@ -257,7 +263,7 @@ private fun stamp(value:String)=try{DateTimeFormatter.ofPattern("dd MMM · HH:mm
   .sortedByDescending { it.kind.equals("critical", ignoreCase = true) }
  else emptyList()
  val incident = firing.firstOrNull()
- val verified = state == "Live" && LiveRepository.active.none { it.state == "Unknown" }
+ val verified = state == "Live" && LiveRepository.signals.isNotEmpty() && LiveRepository.signals.values.all { it } && LiveRepository.active.none { it.state == "Unknown" }
  val headline = when {
   incident?.kind.equals("critical", ignoreCase = true) -> "Critical"
   incident != null -> "Needs you"
@@ -270,13 +276,12 @@ private fun stamp(value:String)=try{DateTimeFormatter.ofPattern("dd MMM · HH:mm
   else -> state
  }
  val accent = if (incident != null) Apricot else if (verified) Cobalt else Muted
- Row(
-  Modifier.fillMaxWidth().padding(bottom=8.dp)
-   .clip(RoundedCornerShape(24.dp)).background(Card).padding(horizontal=16.dp, vertical=10.dp),
-  verticalAlignment=Alignment.CenterVertically,
-  horizontalArrangement=Arrangement.spacedBy(12.dp)
+ Column(
+  modifier.padding(bottom=8.dp).clip(RoundedCornerShape(24.dp))
+   .background(if(incident!=null) Color(0xFF3A2B14) else Card).padding(16.dp),
+  verticalArrangement=Arrangement.spacedBy(6.dp)
  ) {
-  Column(Modifier.weight(1f)) {
+  Column {
    Text(headline, color=accent, fontSize=26.sp, fontWeight=FontWeight.Bold)
    Text(summary, color=Paper, fontSize=13.sp, maxLines=2, overflow=TextOverflow.Ellipsis)
    if (incident != null && !verified) Text("Partial data", color=Muted, fontSize=12.sp)

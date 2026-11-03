@@ -19,9 +19,9 @@ import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupProperties
 
 internal object DeskColors {
- val background=Color(0xFF11151E);val surface=Color(0xFF222733);val raised=Color(0xFF2C3445)
- val text=Color(0xFFF1F2F8);val muted=Color(0xFFB3BBCF);val blue=Color(0xFF8D9EFF)
- val cobalt=Color(0xFF5268EF);val lilac=Color(0xFFC7BFED);val apricot=Color(0xFFEFBC99);val green=Color(0xFFB5DEC6)
+ val background=Color(0xFF0F1115);val surface=Color(0xFF1A1D24);val raised=Color(0xFF232733)
+ val text=Color(0xFFE6E8EE);val muted=Color(0xFFA7ADBB);val blue=Color(0xFF9CCBFF)
+ val cobalt=Color(0xFF5268EF);val lilac=Color(0xFFC7BFED);val apricot=Color(0xFFFFB86B);val green=Color(0xFFB5DEC6)
 }
 @Composable internal fun DeskAction(label:String,primary:Boolean=false,enabled:Boolean=true,click:()->Unit){
  Box(Modifier.heightIn(min=40.dp).clip(RoundedCornerShape(11.dp)).background(if(primary)DeskColors.cobalt else DeskColors.raised).clickable(enabled=enabled,onClick=click).padding(horizontal=13.dp),contentAlignment=Alignment.Center){Text(label,color=if(enabled)DeskColors.text else DeskColors.muted.copy(alpha=.5f),fontSize=13.sp,fontWeight=FontWeight.Medium)}

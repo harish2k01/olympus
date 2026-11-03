@@ -38,7 +38,9 @@ private fun groupingKey(e:LabEvent)=listOf(e.source,e.title,e.detail,e.kind)
  var older by remember{mutableStateOf(emptyList<LabEvent>())};var next by remember{mutableIntStateOf(0)};var total by remember{mutableIntStateOf(-1)};var loading by remember{mutableStateOf(false)};var historyError by remember{mutableStateOf(false)}
  fun more(){historyJob?.cancel();val requestSource=source;historyJob=scope.launch{loading=true;historyError=false;try{val pair=Pairing.read(context)?:error("Pairing required");val page=withContext(Dispatchers.IO){JSONObject(LiveRepository.request(pair,"/v1/events/history?offset=$next&source="+java.net.URLEncoder.encode(requestSource,"UTF-8")))};if(requestSource!=source)return@launch;val list=page.getJSONArray("events");older=(older+(0 until list.length()).map{val e=list.getJSONObject(it);LiveRepository.event(e)}).distinctBy{it.id};next=page.getInt("next");total=page.getInt("total")}catch(e:CancellationException){throw e}catch(_:Exception){historyError=true}finally{loading=false}}}
  var query by rememberSaveable{mutableStateOf("")};var period by rememberSaveable(initialSection){mutableStateOf(initialSection)}
+ var kindFilter by rememberSaveable { mutableStateOf("All") }
  val showTests=LocalShowTests.current
+ LaunchedEffect(period){kindFilter="All"}
  LaunchedEffect(source,period){historyJob?.cancel();older=emptyList();next=0;total=-1;if(period=="History")more()}
 
 
@@ -47,10 +49,19 @@ private fun groupingKey(e:LabEvent)=listOf(e.source,e.title,e.detail,e.kind)
  if(recentOnly&&period=="History")Text("Last 24 hours",color=EventMuted,fontSize=11.sp)
  val all=(LiveRepository.events+older).distinctBy{it.id}
  DeskSegments(listOf("All")+((LiveRepository.active+all).map{it.source}+LiveRepository.deliveries.map{it.name}).filter{showTests||it!="Test"}.distinct().sorted(),source,{source=it;if(it!="All"&&LiveRepository.active.none{event->event.source==it})period="History"})
+ val filters = if (period == "Active") listOf("All", "Firing", "Pending")
+ else listOf("All", "Resolved", "Notices", "Events")
+ DeskSegments(filters, kindFilter, { kindFilter = it })
  val activeIds=LiveRepository.active.map{it.id}.toSet()
  val events=(if(period=="Active")LiveRepository.active else if(recentOnly)all else all.filter{it.id !in activeIds}).filter{e->
-  (period=="Active"||!recentOnly||try{java.time.Instant.parse(e.resolvedAt.ifBlank{e.time}).isAfter(java.time.Instant.now().minusSeconds(86400))}catch(_:Exception){false})&&(query.isBlank()||e.title.contains(query,true)||e.detail.contains(query,true)||e.source.contains(query,true))&&(source=="All"||e.source==source)&&(showTests||!(e.kind=="Test"||e.source=="Test"||e.title=="Test"))}
- if(events.isEmpty())DeskEmpty(if(query.isNotBlank()||source!="All")"No matching records"else if(period=="Active")"No active incidents"else"No activity received",when{query.isNotBlank()||source!="All"->"Try another source or search.";!LiveRepository.state.startsWith("Live")->"Connection unavailable · showing last known state.";LiveRepository.signals.values.any{!it}->"Some sources are unavailable. Check source delivery below.";period=="Active"->"Connected sources report no active incidents.";else->"Received notifications will appear here."})
+  val matchesKind = when (kindFilter) {
+   "Firing", "Pending", "Resolved" -> e.state == kindFilter
+   "Notices" -> e.source != "Kubernetes" && e.state in listOf("Activity", "Notification")
+   "Events" -> e.source == "Kubernetes"
+   else -> true
+  }
+  matchesKind && (period=="Active"||!recentOnly||try{java.time.Instant.parse(e.resolvedAt.ifBlank{e.time}).isAfter(java.time.Instant.now().minusSeconds(86400))}catch(_:Exception){false})&&(query.isBlank()||e.title.contains(query,true)||e.detail.contains(query,true)||e.source.contains(query,true))&&(source=="All"||e.source==source)&&(showTests||!(e.kind=="Test"||e.source=="Test"||e.title=="Test"))}
+ if(events.isEmpty())DeskEmpty(if(query.isNotBlank()||source!="All"||kindFilter!="All")"No matching records"else if(period=="Active")"No active incidents"else"No activity received",when{query.isNotBlank()||source!="All"->"Try another source or search.";!LiveRepository.state.startsWith("Live")->"Connection unavailable · showing last known state.";LiveRepository.signals.values.any{!it}->"Some sources are unavailable. Check source delivery below.";period=="Active"->"Connected sources report no active incidents.";else->"Received notifications will appear here."})
  events.groupBy(::groupingKey).values.sortedByDescending{it.first().resolvedAt.ifBlank{it.first().time}}.forEach{group->NotificationRow(group.first(),group.size){open(group.first())}}
  if(period=="History"&&(total<0||next<total||historyError))DeskAction(if(loading)"Loading…"else if(historyError)"Retry history"else"Load history",enabled=!loading){more()}
  DeskDisclosure("Source delivery"){
