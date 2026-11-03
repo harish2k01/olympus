@@ -30,7 +30,7 @@ jobs:
         run: sdkmanager 'platforms;android-37.0' 'build-tools;36.0.0'
       - uses: gradle/actions/setup-gradle@v4
       - name: Build, test and lint
-        run: bash ./gradlew assembleDebug testDebugUnitTest lintDebug --console=plain
+        run: bash ./gradlew assembleDebug assembleRelease testDebugUnitTest lintRelease --console=plain
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -38,4 +38,5 @@ jobs:
           path: |
             app/build/reports/
             app/build/outputs/apk/debug/*.apk
+            app/build/outputs/apk/release/*-unsigned.apk
           retention-days: 7

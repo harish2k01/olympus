@@ -23,7 +23,18 @@ Settings includes appearance, desk timing, layout, notification channels, and pa
 
 ## Development
 
-Requires Android Studio, its compatible JDK, Android SDK Platform 37, and Build Tools 36.0.0. Android 10 (API 29) or later is supported. Open this directory in Android Studio or run `gradlew.bat assembleDebug testDebugUnitTest lintDebug` on Windows. Connect a device with USB debugging enabled for installation. Android CI builds the APK, runs unit tests, and checks lint without requiring a laptop emulator. CI APKs are development builds; release signing and device soak testing are separate release steps.
+Requires Android Studio, its compatible JDK, Android SDK Platform 37, and Build Tools 36.0.0. Android 10 (API 29) or later is supported. Open this directory in Android Studio or run `gradlew.bat assembleDebug testDebugUnitTest lintDebug` on Windows. Connect a device with USB debugging enabled for installation. Android CI builds the debug and optimized unsigned release APKs, runs unit tests, and checks release lint.
+
+### Release build
+
+Keep the production keystore outside the repository. Set these environment variables through your local secret store or release runner before invoking Gradle.
+
+- `OLYMPUS_KEYSTORE` is the absolute path to the production keystore.
+- `OLYMPUS_STORE_PASSWORD` is the keystore password.
+- `OLYMPUS_KEY_ALIAS` is the release key alias.
+- `OLYMPUS_KEY_PASSWORD` is the release key password.
+
+Run `gradlew.bat assembleRelease testDebugUnitTest lintRelease` on Windows. The APK is under `app/build/outputs/apk/release/`. Without signing variables, Gradle produces an unsigned APK for CI verification. Upgrades require the same signing certificate as the installed release. Keep the preceding signed APK available for rollback and verify the upgrade, pairing, and Desk soak on the target device before publishing.
 
 ## Deployment and pairing
 
