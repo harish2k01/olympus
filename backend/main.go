@@ -77,6 +77,7 @@ type Snapshot struct {
 	Monitors                []Monitor          `json:"monitors"`
 	Active                  []Event            `json:"active"`
 	Signals                 map[string]bool    `json:"signals"`
+ ObservedAt map[string]string `json:"observedAt,omitempty"`
 	Integrations            []IntegrationState `json:"integrations"`
 	Download                *float64           `json:"downloadMiB"`
 	BackupAvailable         *bool              `json:"backupAvailable"`
@@ -183,7 +184,7 @@ func (s *server) snapshot(ctx context.Context) Snapshot {
 	if time.Since(s.cacheTime) < 5*time.Second {
 		return s.cached
 	}
-	out := Snapshot{Time: time.Now().UTC().Format(time.RFC3339), Nodes: []Node{}, Apps: []App{}, Errors: []string{}}
+	out := Snapshot{Time: time.Now().UTC().Format(time.RFC3339), Nodes: []Node{}, Apps: []App{}, Errors: []string{}, ObservedAt: map[string]string{}}
 	var nodes struct {
 		Items []struct {
 			Metadata struct {
@@ -199,6 +200,8 @@ func (s *server) snapshot(ctx context.Context) Snapshot {
 	}
 	if e := s.get(ctx, s.kube, s.kubeURL+"/api/v1/nodes", &nodes, true); e != nil {
 		out.Errors = append(out.Errors, "Kubernetes nodes unavailable")
+ } else if len(nodes.Items) > 0 {
+  out.ObservedAt["Nodes"] = time.Now().UTC().Format(time.RFC3339)
 	}
 	// A metric's instance is explicitly joined to node addresses; external exporters never enter cluster totals.
 	queries := []string{`100 * (1 - avg by(instance) (rate(node_cpu_seconds_total{job="node-exporter",mode="idle"}[5m])))`, `(node_memory_MemTotal_bytes{job="node-exporter"} - node_memory_MemAvailable_bytes{job="node-exporter"}) / 1073741824`, `node_memory_MemTotal_bytes{job="node-exporter"} / 1073741824`}
@@ -251,6 +254,8 @@ func (s *server) snapshot(ctx context.Context) Snapshot {
 	}
 	if e := s.get(ctx, s.kube, s.kubeURL+"/apis/argoproj.io/v1alpha1/applications", &apps, true); e != nil {
 		out.Errors = append(out.Errors, "Argo applications unavailable")
+ } else {
+  out.ObservedAt["Argo CD"] = time.Now().UTC().Format(time.RFC3339)
 	}
 	for _, a := range apps.Items {
 		out.Apps = append(out.Apps, App{Name: a.Metadata.Name, Namespace: a.Spec.Destination.Namespace, Health: a.Status.Health.Status, Sync: a.Status.Sync.Status, Resources: a.Status.Resources})
@@ -258,6 +263,7 @@ func (s *server) snapshot(ctx context.Context) Snapshot {
 	out.MonitorsUp = s.scalar(ctx, `sum(monitor_status == bool 1)`)
 	out.MonitorsTotal = s.scalar(ctx, `count(monitor_status)`)
 	out.Monitors = s.monitorList(ctx)
+ s.collectMetricObservations(ctx, &out)
 	out.Download = s.scalar(ctx, `sum(qbittorrent_global_download_speed_bytes) / 1048576`)
 	var targets struct {
 		Items []struct{ Status struct{ Available bool } } `json:"items"`

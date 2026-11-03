@@ -70,7 +70,10 @@ func TestClusterHistoryUsesFixedQueriesAndSeparateChangeMarkers(t *testing.T) {
 			queries[1].Unit != "sync-marker" || queries[2].Unit != "restart-marker" {
 			t.Fatalf("%s: expected one percentage and two marker series: %v, %v", kind, queries, err)
 		}
-		for _, query := range queries {
+		if !strings.Contains(queries[0].Expression, "and on(node_ip)") || !strings.Contains(queries[0].Expression, "kube_node_info") {
+            t.Fatal("query must exclude exporters outside the cluster")
+        }
+        for _, query := range queries {
 			if strings.Contains(query.Expression, "untrusted") {
 				t.Fatalf("%s: accepted a caller-supplied expression", kind)
 			}

@@ -33,14 +33,21 @@ type historyQuery struct { Name, Unit, Expression string }
 
 var historyIdentity = regexp.MustCompile(`^[a-zA-Z0-9_.-]{1,253}$`)
 
+// Restrict historical readings to exporters whose IP is reported by a Kubernetes node.
+func clusterNodeMetric(expression string) string {
+	return `(label_replace(` + expression + `, "node_ip", "$1", "instance", "^([^:]+):.*$") and on(node_ip) label_replace(kube_node_info{internal_ip!=""}, "node_ip", "$1", "internal_ip", "(.+)"))`
+}
+
 // The phone selects a supported measurement, never arbitrary PromQL or a URL.
 func historyQueries(v url.Values) ([]historyQuery, error) {
 	valid := func(key string) bool { return historyIdentity.MatchString(v.Get(key)) }
 	switch v.Get("kind") {
 	case "cluster-cpu", "cluster-memory":
-		metric := historyQuery{"CPU · reporting logical cores", "%", `100 * (1 - avg(rate(node_cpu_seconds_total{job="node-exporter",mode="idle"}[5m])))`}
+		metric := historyQuery{"CPU · reporting logical cores", "%", `100 * (1 - avg(` + clusterNodeMetric(`rate(node_cpu_seconds_total{job="node-exporter",mode="idle"}[5m])`) + `))`}
 		if v.Get("kind") == "cluster-memory" {
-			metric = historyQuery{"Memory · reporting physical capacity", "%", `100 * sum(node_memory_MemTotal_bytes{job="node-exporter"} - node_memory_MemAvailable_bytes{job="node-exporter"}) / sum(node_memory_MemTotal_bytes{job="node-exporter"} and node_memory_MemAvailable_bytes{job="node-exporter"})`}
+			total := clusterNodeMetric(`node_memory_MemTotal_bytes{job="node-exporter"}`)
+			available := clusterNodeMetric(`node_memory_MemAvailable_bytes{job="node-exporter"}`)
+			metric = historyQuery{"Memory · reporting physical capacity", "%", "100 * sum(" + total + " - " + available + ") / sum(" + total + " and " + available + ")"}
 		}
 		return []historyQuery{metric,
 			{"Argo CD sync", "sync-marker", `sum(increase(argocd_app_sync_total{phase="Succeeded"}[5m]))`},
