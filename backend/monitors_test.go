@@ -14,12 +14,16 @@ func TestMonitorStatusAndLatencyJoinByIdentity(t *testing.T) {
 			w.Write([]byte(`{"status":"success","data":{"result":[{"metric":{"monitor_id":"2"},"value":[0,"46"]}]}}`))
 			return
 		}
+		if r.URL.Query().Get("query") == `monitor_uptime_ratio{window="1d"}` {
+			w.Write([]byte(`{"status":"success","data":{"result":[{"metric":{"monitor_id":"2"},"value":[0,"0.97"]}]}}`))
+			return
+		}
 		w.Write([]byte(`{"status":"success","data":{"result":[{"metric":{"monitor_id":"1","monitor_name":"A"},"value":[0,"1"]},{"metric":{"monitor_id":"2","monitor_name":"B"},"value":[0,"0"]}]}}`))
 	}))
 	defer upstream.Close()
 	s := &server{client: upstream.Client(), prom: upstream.URL}
 	rows := s.monitorList(context.Background())
-	if len(rows) != 2 || rows[0].Name != "B" || rows[0].Status != "Down" || rows[0].Response == nil || *rows[0].Response != 46 || rows[1].Response != nil {
+	if len(rows) != 2 || rows[0].Name != "B" || rows[0].Status != "Down" || rows[0].Response == nil || *rows[0].Response != 46 || rows[1].Response != nil || rows[0].Uptime24h == nil || *rows[0].Uptime24h != 0.97 || rows[1].Uptime24h != nil {
 		t.Fatal("monitor identity or missing latency was misrepresented")
 	}
 }

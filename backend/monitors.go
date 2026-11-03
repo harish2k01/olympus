@@ -6,11 +6,12 @@ import (
 )
 
 type Monitor struct {
-	ID       string   `json:"id"`
-	Name     string   `json:"name"`
-	Type     string   `json:"type"`
-	Status   string   `json:"status"`
-	Response *float64 `json:"responseMs"`
+	ID        string   `json:"id"`
+	Name      string   `json:"name"`
+	Type      string   `json:"type"`
+	Status    string   `json:"status"`
+	Response  *float64 `json:"responseMs"`
+	Uptime24h *float64 `json:"uptime24h"`
 }
 
 func (s *server) monitorList(ctx context.Context) []Monitor {
@@ -22,6 +23,13 @@ func (s *server) monitorList(ctx context.Context) []Monitor {
 	latency := map[string]*float64{}
 	for _, v := range response {
 		latency[v.Metric["monitor_id"]] = number(v)
+	}
+	uptimeRows, _ := s.query(ctx, `monitor_uptime_ratio{window="1d"}`)
+	uptime := map[string]*float64{}
+	for _, row := range uptimeRows {
+		if value := number(row); value != nil && *value >= 0 && *value <= 1 {
+			uptime[row.Metric["monitor_id"]] = value
+		}
 	}
 	out := []Monitor{}
 	seen := map[string]bool{}
@@ -44,9 +52,12 @@ func (s *server) monitorList(ctx context.Context) []Monitor {
 				state = "Maintenance"
 			}
 		}
-		out = append(out, Monitor{id, v.Metric["monitor_name"], v.Metric["monitor_type"], state, latency[id]})
+		out = append(out, Monitor{id, v.Metric["monitor_name"], v.Metric["monitor_type"], state, latency[id], uptime[id]})
 	}
 	sort.Slice(out, func(i, j int) bool {
+		if (out[i].Status == "Down") != (out[j].Status == "Down") {
+			return out[i].Status == "Down"
+		}
 		if (out[i].Status == "Up") != (out[j].Status == "Up") {
 			return out[i].Status != "Up"
 		}
