@@ -285,9 +285,20 @@ private fun stamp(value:String)=try{DateTimeFormatter.ofPattern("dd MMM · HH:mm
    Text(headline, color=accent, fontSize=26.sp, fontWeight=FontWeight.Bold)
    Text(summary, color=Paper, fontSize=13.sp, maxLines=2, overflow=TextOverflow.Ellipsis)
    if (incident != null && !verified) Text("Partial data", color=Muted, fontSize=12.sp)
+   if (!connected && LiveRepository.time.isNotBlank()) {
+    Text("Cached snapshot · ${localTime(LiveRepository.time)}", color=Muted, fontSize=12.sp)
+   }
+   if (connected && !verified) {
+    val unavailable = LiveRepository.signals.filterValues { !it }.keys
+    if (unavailable.isNotEmpty()) Text(unavailable.joinToString(", ", postfix=" unavailable"), color=Muted, fontSize=12.sp)
+   }
   }
   if (incident != null) TextButton(onClick={open(incident)}, modifier=Modifier.heightIn(min=44.dp)) {
    Text("View incident", color=accent)
+  } else if (!connected && state != "Not paired") {
+   TextButton(onClick=LiveRepository::retryNow, modifier=Modifier.heightIn(min=44.dp)) {
+    Text("Retry now", color=Cobalt)
+   }
   }
  }
 }

@@ -56,7 +56,7 @@ class MainActivity:ComponentActivity(){
                 try{LiveRepository.stream(pair).takeWhile{!getSharedPreferences("home-v3",0).getBoolean("backgroundAlerts",false)}.collect{LiveRepository.applyFrame(it);retry=1000L;withContext(Dispatchers.IO){try{val temp=java.io.File(filesDir,"last-frame.tmp");temp.writeText(it);temp.renameTo(cache)}catch(_:Exception){android.util.Log.w("Olympus","snapshot_cache_write_failed")}}};if(!getSharedPreferences("home-v3",0).getBoolean("backgroundAlerts",false))LiveRepository.unavailable()}
                 catch(e:CancellationException){throw e}
                 catch(_:Exception){LiveRepository.unavailable()}
-                delay(retry);retry=(retry*2).coerceAtMost(30000)
+                LiveRepository.awaitRetry(retry);retry=(retry*2).coerceAtMost(30000)
             }
         }}
         setContent {

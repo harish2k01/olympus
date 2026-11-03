@@ -115,5 +115,10 @@ object LiveRepository {
     }
     fun applyFrame(frame:String){val root=JSONObject(frame);apply(root.getJSONObject("snapshot").toString() to root.getJSONArray("events").toString())}
     fun checkFreshness(){if(lastSuccess>0&&System.currentTimeMillis()-lastSuccess>45000)state="Stale"}
+    private val retryRequests = kotlinx.coroutines.channels.Channel<Unit>(kotlinx.coroutines.channels.Channel.CONFLATED)
+    fun retryNow() { retryRequests.trySend(Unit) }
+    suspend fun awaitRetry(delayMillis: Long) {
+        kotlinx.coroutines.withTimeoutOrNull(delayMillis) { retryRequests.receive() }
+    }
     fun unavailable(){state=if(lastSuccess==0L)"Connection unavailable" else "Disconnected · Last known data"}
 }
