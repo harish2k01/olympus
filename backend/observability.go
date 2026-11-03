@@ -285,13 +285,22 @@ func eventOrder(e Event) string {
 	}
 	return e.Time
 }
+const historyRetentionDays = 30
+const historyRecordLimit = 2000
+
+type historyPolicy struct {
+	Days int `json:"days"`
+	MaxRecords int `json:"maxRecords"`
+	Persistent bool `json:"persistent"`
+}
+
 func (s *server) saveHistory() error {
 	if s.history == "" {
 		return nil
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	cutoff := time.Now().Add(-30 * 24 * time.Hour)
+	cutoff := time.Now().Add(-historyRetentionDays * 24 * time.Hour)
 	sort.SliceStable(s.events, func(i, j int) bool {
 		ai := s.events[i].Domain != "" && s.events[i].State != "Resolved"
 		aj := s.events[j].Domain != "" && s.events[j].State != "Resolved"
@@ -307,7 +316,7 @@ func (s *server) saveHistory() error {
 			stampValue = event.ResolvedAt
 		}
 		stamp, _ := time.Parse(time.RFC3339, stampValue)
-		if (stamp.After(cutoff) || event.State == "Firing" || event.State == "Unknown" || event.State == "Pending") && len(kept) < 2000 && !(event.Source == "Test" && strings.HasPrefix(event.Title, "Olympus verification ")) {
+		if (stamp.After(cutoff) || event.State == "Firing" || event.State == "Unknown" || event.State == "Pending") && len(kept) < historyRecordLimit && !(event.Source == "Test" && strings.HasPrefix(event.Title, "Olympus verification ")) {
 			kept = append(kept, event)
 		}
 	}

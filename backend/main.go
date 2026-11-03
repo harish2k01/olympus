@@ -68,6 +68,7 @@ type App struct {
 	Resources []Resource `json:"resources"`
 }
 type Snapshot struct {
+ HistoryPolicy historyPolicy `json:"historyPolicy"`
 	RecentActivity          map[string]int     `json:"recentActivity"`
 	RecentActivityWithTests map[string]int     `json:"recentActivityWithTests"`
 	Time                    string             `json:"time"`
@@ -185,7 +186,7 @@ func (s *server) snapshot(ctx context.Context) Snapshot {
 	if time.Since(s.cacheTime) < 5*time.Second {
 		return s.cached
 	}
-	out := Snapshot{Time: time.Now().UTC().Format(time.RFC3339), Nodes: []Node{}, Apps: []App{}, Errors: []string{}, ObservedAt: map[string]string{}}
+	out := Snapshot{Time: time.Now().UTC().Format(time.RFC3339), Nodes: []Node{}, Apps: []App{}, Errors: []string{}, ObservedAt: map[string]string{}, HistoryPolicy: historyPolicy{Days: historyRetentionDays, MaxRecords: historyRecordLimit, Persistent: s.history != ""}}
 	var nodes struct {
 		Items []struct {
 			Metadata struct {
@@ -480,8 +481,8 @@ func (s *server) webhook(w http.ResponseWriter, r *http.Request) {
 	applyWebhookState(&event, payload)
 	s.mu.Lock()
 	s.events = append([]Event{event}, s.events...)
-	if len(s.events) > 2000 {
-		s.events = s.events[:2000]
+	if len(s.events) > historyRecordLimit {
+		s.events = s.events[:historyRecordLimit]
 	}
 	s.mu.Unlock()
 	if s.saveHistory() != nil {
