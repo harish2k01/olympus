@@ -166,8 +166,21 @@ private fun stamp(value:String)=try{DateTimeFormatter.ofPattern("dd MMM · HH:mm
   }
   if(message.isNotEmpty()){Text(message,color=Mint,fontSize=12.sp);LaunchedEffect(message){delay(2200);message=""}}
   BoxWithConstraints(Modifier.weight(1f)){val viewport=maxHeight
-  AnimatedContent(targetState=detail.ifEmpty{tab},modifier=Modifier.fillMaxSize(),transitionSpec={if(reducedMotion)EnterTransition.None togetherWith ExitTransition.None else fadeIn(tween(180)) togetherWith fadeOut(tween(120))},label="page"){page->
-   Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(bottom=8.dp)){
+  AnimatedContent(targetState=if(wide&&tab=="Inbox"&&detail.startsWith("event:"))"Inbox" else detail.ifEmpty{tab},modifier=Modifier.fillMaxSize(),transitionSpec={if(reducedMotion)EnterTransition.None togetherWith ExitTransition.None else fadeIn(tween(180)) togetherWith fadeOut(tween(120))},label="page"){page->
+   if(wide&&tab=="Inbox"&&(page=="Inbox"||page.startsWith("event:"))){
+    Row(Modifier.fillMaxSize(),horizontalArrangement=Arrangement.spacedBy(14.dp)){
+     Column(Modifier.weight(1f).fillMaxHeight().verticalScroll(rememberScrollState()).padding(bottom=8.dp)){
+      NotificationInbox{selectedEvent=it;detail="event:${it.id}"}
+     }
+     Column(Modifier.weight(1.2f).fillMaxHeight().verticalScroll(rememberScrollState()).padding(bottom=8.dp)){
+      if(!detail.startsWith("event:")) DeskEmpty("Select an incident","Its timeline and related resources will appear here.")
+      else EventRoute(detail.substringAfter(":"),selectedEvent,{selectedEvent=it}){target->
+       detailHistory=ArrayList(detailHistory+detail)
+       detail=target
+      }
+     }
+    }
+   }else Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(bottom=8.dp)){
     when{
      page.startsWith("events-history:")->NotificationInbox(page.substringAfter(":"),"History",true){selectedEvent=it;detail="event:${it.id}"}
      page.startsWith("events-source:")->NotificationInbox(page.substringAfter(":")){selectedEvent=it;detail="event:${it.id}"}
