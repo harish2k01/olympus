@@ -92,7 +92,9 @@ class AlertWatchService:Service(){
       manager.notify(41,ongoing(if(LiveRepository.state.contains("Partial"))"Connected · some sources unavailable"else"Connected · ${LiveRepository.active.count{it.state=="Firing"}} firing"))
       withContext(Dispatchers.IO) { LiveRepository.cacheFrame(this@AlertWatchService, frame) }
      }
-    }catch(e:CancellationException){throw e}catch(_:Exception){LiveRepository.unavailable()}
+    }catch(e:CancellationException){throw e}catch(_:Exception){ /* Reconnect below. */ }
+    LiveRepository.unavailable()
+    OlympusStatusWidget.publish(this@AlertWatchService)
     manager.notify(41,ongoing("Disconnected · retrying"));LiveRepository.awaitRetry(retry);retry=(retry*2).coerceAtMost(30000)
    }
   }

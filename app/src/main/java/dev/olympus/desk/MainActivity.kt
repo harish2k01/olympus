@@ -63,7 +63,11 @@ class MainActivity:ComponentActivity(){
                 repeatOnLifecycle(Lifecycle.State.STARTED) {
                     launch {
                         while (isActive) {
+                            val previousState = LiveRepository.state
                             LiveRepository.checkFreshness()
+                            if (LiveRepository.state != previousState) {
+                                OlympusStatusWidget.publish(this@MainActivity)
+                            }
                             delay(5000)
                         }
                     }
@@ -86,6 +90,7 @@ class MainActivity:ComponentActivity(){
                             } catch (_: Exception) {
                                 LiveRepository.unavailable()
                             }
+                            OlympusStatusWidget.publish(this@MainActivity)
                             LiveRepository.awaitRetry(retry)
                             retry = (retry * 2).coerceAtMost(30_000)
                         }
