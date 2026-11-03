@@ -1,5 +1,7 @@
 package dev.olympus.desk
 
+import androidx.compose.foundation.selection.selectable
+
 import android.app.Activity
 import android.content.ClipData
 import android.content.ClipboardManager
@@ -182,14 +184,6 @@ private fun stamp(value:String)=try{DateTimeFormatter.ofPattern("dd MMM · HH:mm
   detailHistory=arrayListOf()
   editing=false
  }
- if (wide && !editing) Column(Modifier.width(72.dp).fillMaxHeight()) {
-  destinations.forEach { (destination, icon) ->
-   NavigationRailItem(selected = tab == destination, onClick = { navigate(destination) },
-    modifier = Modifier.weight(1f).semantics { contentDescription = destination },
-    icon = { LabGlyph(icon, if (tab == destination) DeskColors.onSelected else Muted, 22.dp, decorative = true) },
-    label = { Text(destination, color = if (tab == destination) Paper else Muted, fontSize = 11.sp) })
-  }
- }
  Column(Modifier.weight(1f).fillMaxHeight().offset(x=if(dimMode)shift.dp else 0.dp)){
  Column(Modifier.weight(1f).fillMaxWidth().padding(horizontal = 14.dp)) {
   if (wide && tab == "Inbox" && (detail.isEmpty() || detail.startsWith("event:"))) {
@@ -339,7 +333,29 @@ private fun stamp(value:String)=try{DateTimeFormatter.ofPattern("dd MMM · HH:mm
 
 
  }
- if(!wide&&!editing) NavigationBar(containerColor=Card){
+ if (wide && !editing) {
+  Row(
+   Modifier.align(Alignment.CenterHorizontally).padding(bottom = 6.dp)
+    .clip(RoundedCornerShape(24.dp)).background(Card).padding(3.dp),
+   horizontalArrangement = Arrangement.spacedBy(4.dp)
+  ) {
+   destinations.forEach { (destination, icon) ->
+    val selected = tab == destination
+    val tint = if (selected) DeskColors.onSelected else Muted
+    Row(
+     Modifier.heightIn(min = 44.dp).clip(RoundedCornerShape(20.dp))
+      .background(if (selected) DeskColors.selected else Color.Transparent)
+      .selectable(selected = selected, role = androidx.compose.ui.semantics.Role.Tab, onClick = { navigate(destination) })
+      .semantics { contentDescription = destination }.padding(horizontal = 12.dp),
+     verticalAlignment = Alignment.CenterVertically,
+     horizontalArrangement = Arrangement.spacedBy(6.dp)
+    ) {
+     LabGlyph(icon, tint, 18.dp, decorative = true)
+     Text(destination, color = tint, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+    }
+   }
+  }
+ } else if (!editing) NavigationBar(containerColor = Card) {
   destinations.forEach { (destination, icon) ->
    NavigationBarItem(
     selected=tab==destination,

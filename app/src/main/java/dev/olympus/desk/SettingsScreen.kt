@@ -108,7 +108,7 @@ internal val LocalGridGap=staticCompositionLocalOf{10}
           SettingsDivider()
           Box(Modifier.clickable { section = "Events" }) { SettingsValue("Event display", "Group by source") }
           SettingsDivider()
-          Box(Modifier.clickable { section = "Display" }) { SettingsValue("Navigation", "Rail on desk") }
+          Box(Modifier.clickable { section = "Display" }) { SettingsValue("Navigation", "Dock on desk") }
          }
          CompanionPanel("Desk") {
           SettingSwitch("Keep screen awake", awake) { bool("keepAwake", it, setAwake) }
