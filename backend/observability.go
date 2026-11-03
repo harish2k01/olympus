@@ -50,6 +50,8 @@ func route(path string) string {
 		return "stream"
 	case path == "/v1/workload", path == "/v1/workload/logs":
   return "workload_inspection"
+ case path == "/v1/icons":
+  return "app_icon"
  case path == "/v1/metrics/history":
   return "metric_history"
  case path == "/v1/snapshot":

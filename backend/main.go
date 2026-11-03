@@ -407,6 +407,8 @@ func (s *server) api(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 15*time.Second)
 	defer cancel()
 	switch r.URL.Path {
+ case "/v1/icons":
+  serveAppIcon(w, r)
 	case "/v1/workload", "/v1/workload/logs":
   s.workloadInspection(w,r,ctx)
  case "/v1/metrics/history":
