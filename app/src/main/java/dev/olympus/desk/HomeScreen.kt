@@ -147,6 +147,16 @@ private fun stamp(value:String)=try{DateTimeFormatter.ofPattern("dd MMM · HH:mm
  val deskIdleEnabled = wide && dimMode && !editing && !settings && detail.isEmpty() && tab == "Home"
  var ambient by remember { mutableStateOf(false) }
  var lastInteraction by remember { mutableLongStateOf(android.os.SystemClock.elapsedRealtime()) }
+ val dockAutoHide = wide && !editing && !settings && detail.isEmpty() && !ambient
+ var dockVisible by remember { mutableStateOf(true) }
+ var touchInProgress by remember { mutableStateOf(false) }
+ LaunchedEffect(dockAutoHide, lastInteraction, touchInProgress, dockSeconds) {
+  dockVisible = true
+  if (dockAutoHide && !touchInProgress) {
+   delay(dockSeconds.coerceAtLeast(1) * 1_000L)
+   dockVisible = false
+  }
+ }
  val verdictState = currentVerdict()
  val incidentKeys = verdictState.incidents.map { "${it.id.ifBlank { it.title }}:${it.kind.lowercase()}" }.toSet()
  var previousIncidentKeys by remember { mutableStateOf(incidentKeys) }
@@ -168,11 +178,13 @@ private fun stamp(value:String)=try{DateTimeFormatter.ofPattern("dd MMM · HH:mm
   AmbientDesk(verdictState) { lastInteraction = android.os.SystemClock.elapsedRealtime() }
   return@CompositionLocalProvider
  }
- Surface(color=Ink,modifier=Modifier.fillMaxSize().pointerInput(deskIdleEnabled) {
-  if (deskIdleEnabled) awaitPointerEventScope {
+ Surface(color=Ink,modifier=Modifier.fillMaxSize().pointerInput(wide) {
+  if (wide) awaitPointerEventScope {
    while (true) {
     val event = awaitPointerEvent(PointerEventPass.Initial)
-    if (event.changes.any { it.pressed }) lastInteraction = android.os.SystemClock.elapsedRealtime()
+    val pressed = event.changes.any { it.pressed }
+    if (pressed || touchInProgress) lastInteraction = android.os.SystemClock.elapsedRealtime()
+    touchInProgress = pressed
    }
   }
  }) {
@@ -333,7 +345,7 @@ private fun stamp(value:String)=try{DateTimeFormatter.ofPattern("dd MMM · HH:mm
 
 
  }
- if (wide && !editing) {
+ if (wide && !editing && (!dockAutoHide || dockVisible)) {
   Row(
    Modifier.align(Alignment.CenterHorizontally).padding(bottom = 6.dp)
     .clip(RoundedCornerShape(24.dp)).background(Card).padding(3.dp),
@@ -355,7 +367,9 @@ private fun stamp(value:String)=try{DateTimeFormatter.ofPattern("dd MMM · HH:mm
     }
    }
   }
- } else if (!editing) NavigationBar(containerColor = Card) {
+ } else if (wide && !editing) {
+  Spacer(Modifier.height(56.dp))
+ } else if (!wide && !editing) NavigationBar(containerColor = Card) {
   destinations.forEach { (destination, icon) ->
    NavigationBarItem(
     selected=tab==destination,
