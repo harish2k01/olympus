@@ -73,3 +73,12 @@ internal object Snoozes {
         prefs?.edit()?.remove(key(event))?.apply()
     }
 }
+
+/** Non-urgent work from the backend; never changes the verdict. */
+internal data class Chore(val id: String, val kind: String, val title: String, val detail: String, val due: String, val link: String)
+
+internal fun parseChores(array: org.json.JSONArray?): List<Chore> =
+    if (array == null) emptyList() else (0 until array.length()).map {
+        val c = array.getJSONObject(it)
+        Chore(c.optString("id"), c.optString("kind"), c.optString("title"), c.optString("detail"), c.optString("due"), c.optString("link"))
+    }

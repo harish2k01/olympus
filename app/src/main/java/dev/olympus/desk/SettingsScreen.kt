@@ -423,14 +423,8 @@ internal fun ServicesTabs(selected: String, select: (String) -> Unit) {
   DeskSegments(listOf("All", "Up", "Down", "Unknown", "Pending", "Maintenance"), status, { status = it })
  CompanionPanel("Uptime Kuma") {
   val matches = monitors.filter { it.name.contains(search, true) && (status == "All" || it.status == status) }
-  val rows = matches.sortedBy {
-   when (it.status) {
-    "Down" -> 0
-    "Unknown" -> 1
-    "Up" -> 3
-    else -> 2
-   }
-  }
+  // Problems first, then slowest first, so the screen answers "what is struggling?"
+  val rows = matches.sortedWith(compareBy<MonitorState>({ when (it.status) { "Down" -> 0; "Unknown" -> 1; "Up" -> 3; else -> 2 } }, { -(it.responseMs ?: -1f) }))
   if (rows.isEmpty()) Text("No matching monitors", color = DeskColors.muted, fontSize = 13.sp)
   rows.forEachIndexed { index, monitor ->
    if (index > 0) HorizontalDivider(color = DeskColors.raised)

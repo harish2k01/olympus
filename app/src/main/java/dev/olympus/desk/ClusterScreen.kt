@@ -26,6 +26,7 @@ internal fun ClusterOverview(
  openHistory: (String, String) -> Unit,
  openNode: (String) -> Unit
 ) {
+ ClusterChores()
  var metric by rememberSaveable { mutableStateOf("cpu") }
  @Composable fun metricOverview() {
   MetricHistoryPanel(
@@ -121,6 +122,26 @@ private fun ClusterNodes(open: (String) -> Unit) {
     Text("›", color = DeskColors.text, fontSize = 20.sp)
    }
    if (index < nodes.lastIndex) HorizontalDivider(color = DeskColors.raised)
+  }
+ }
+}
+
+/** Cluster-level chores (certificates, volumes, upgrades) at the top of Cluster, in the glance style. */
+@Composable
+private fun ClusterChores() {
+ val chores = LiveRepository.later.filter { it.kind in setOf("certificate", "volume", "upgrade") }
+ val restarts = LiveRepository.restarts24h
+ if (chores.isEmpty() && restarts == null) return
+ Row(Modifier.fillMaxWidth().padding(bottom = 10.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+  if (restarts != null) Column(Modifier.weight(1f).clip(RoundedCornerShape(16.dp)).background(DeskColors.surface).padding(14.dp)) {
+   Text("Restarts · 24 h", color = DeskColors.muted, fontSize = 13.sp)
+   Text(restarts.toString(), color = DeskColors.text, fontSize = 26.sp, fontWeight = FontWeight.SemiBold)
+  }
+  Column(Modifier.weight(2f).clip(RoundedCornerShape(16.dp)).background(DeskColors.surface).padding(14.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+   Text("Later", color = DeskColors.muted, fontSize = 13.sp)
+   if (chores.isEmpty()) Text("Certificates, volumes and Talos are up to date", color = DeskColors.text, fontSize = 15.sp)
+   chores.take(3).forEach { Text(it.title, color = DeskColors.text, fontSize = 15.sp, maxLines = 1) }
+   if (chores.size > 3) Text("+ ${chores.size - 3} more in Attention", color = DeskColors.muted, fontSize = 13.sp)
   }
  }
 }

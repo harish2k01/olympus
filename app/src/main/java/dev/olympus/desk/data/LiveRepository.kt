@@ -86,6 +86,7 @@ object LiveRepository {
     var backupLast by mutableStateOf("");private set
     var restarts24h by mutableStateOf<Int?>(null);private set
     var actionsEnabled by mutableStateOf(false);private set
+    internal var later by mutableStateOf(emptyList<Chore>());private set
     private val cacheLock = Any()
     private const val maxCachedBytes = 3 * 1024 * 1024
 
@@ -171,7 +172,7 @@ object LiveRepository {
         backupVolumes=if(root.isNull("backupVolumes"))null else root.optInt("backupVolumes");backupRecorded=if(root.isNull("backupRecorded"))null else root.optInt("backupRecorded");backupLast=root.optString("backupLast")
         download=if(root.isNull("downloadMiB"))null else root.getDouble("downloadMiB").toFloat();backup=if(root.isNull("backupAvailable"))null else root.getBoolean("backupAvailable")
         val checks=root.optJSONArray("monitors")?:org.json.JSONArray();monitors=(0 until checks.length()).map{val m=checks.getJSONObject(it);MonitorState(m.optString("id"),m.optString("name"),m.optString("type"),m.optString("status"),if(m.isNull("responseMs"))null else m.optDouble("responseMs").toFloat(),m.optDouble("uptime24h").toFloat().takeIf { it in 0f..1f })}
-        restarts24h=if(!root.has("restarts24h")||root.isNull("restarts24h"))null else root.getDouble("restarts24h").let{Math.round(it).toInt()};actionsEnabled=root.optBoolean("actionsEnabled",false)
+        restarts24h=if(!root.has("restarts24h")||root.isNull("restarts24h"))null else root.getDouble("restarts24h").let{Math.round(it).toInt()};actionsEnabled=root.optBoolean("actionsEnabled",false);later=parseChores(root.optJSONArray("later"))
         monitorsUp=if(root.isNull("monitorsUp"))null else root.getInt("monitorsUp");monitorsTotal=if(root.isNull("monitorsTotal"))null else root.getInt("monitorsTotal")
         val rows=org.json.JSONArray(payload.second);events=(0 until rows.length()).map{val e=rows.getJSONObject(it);event(e)}
         observedAt = root.optJSONObject("observedAt")?.let { obj -> obj.keys().asSequence().associateWith { obj.optString(it) } }.orEmpty()
