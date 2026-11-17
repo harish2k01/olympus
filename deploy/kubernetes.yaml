@@ -95,7 +95,7 @@ spec:
         seccompProfile: {type: RuntimeDefault}
       containers:
         - name: api
-          image: ghcr.io/harish2k01/olympus-backend:f8bf74592a62486dade2f3eeba39584e4a2f3a6b
+          image: ghcr.io/harish2k01/olympus-backend:7f149cb42e226ae07aff833ad5d5c9240c2195dc
           ports: [{name: http, containerPort: 8080}]
           envFrom:
             - secretRef: {name: olympus-auth}
