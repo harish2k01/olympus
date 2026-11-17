@@ -77,7 +77,7 @@ private fun stamp(value:String)=try{DateTimeFormatter.ofPattern("dd MMM · HH:mm
  var servicesSection by rememberSaveable{mutableStateOf("Monitors")}
  var selectedEvent by remember{mutableStateOf<LabEvent?>(null)}
  var detail by rememberSaveable{mutableStateOf("")}
- LaunchedEffect(notificationId,notificationNonce){if(notificationId.isNotBlank()){tab="Inbox";detail=if(notificationId=="-inbox-")""else"event:$notificationId"}}
+ LaunchedEffect(notificationId,notificationNonce){if(notificationId.isNotBlank()){tab="Attention";detail=if(notificationId=="-inbox-")""else"event:$notificationId"}}
  var detailHistory by rememberSaveable{mutableStateOf(arrayListOf<String>())}
  fun backDetail(){if(detailHistory.isNotEmpty()){detail=detailHistory.last();detailHistory=ArrayList(detailHistory.dropLast(1))}else detail=""}
  var menu by remember{mutableStateOf(false)}
@@ -138,8 +138,8 @@ private fun stamp(value:String)=try{DateTimeFormatter.ofPattern("dd MMM · HH:mm
   GlanceScreen(
    wide = wide,
    nightEnabled = prefs.getBoolean("nightMode", true),
-   openIncident = { incident -> tab = "Inbox"; selectedEvent = incident; detail = "event:${incident.id}"; detailHistory = arrayListOf() },
-   openAttention = { tab = "Inbox"; detail = ""; detailHistory = arrayListOf() }
+   openIncident = { incident -> tab = "Attention"; selectedEvent = incident; detail = "event:${incident.id}"; detailHistory = arrayListOf() },
+   openAttention = { tab = "Attention"; detail = ""; detailHistory = arrayListOf() }
   )
   return@CompositionLocalProvider
  }
@@ -158,7 +158,7 @@ private fun stamp(value:String)=try{DateTimeFormatter.ofPattern("dd MMM · HH:mm
   }
  }) {
  Row(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.displayCutout)){
- val destinations = listOf("Home" to "NavHome", "Cluster" to "NavCluster", "Services" to "NavServices", "Inbox" to "NavInbox")
+ val destinations = listOf("Home" to "NavHome", "Cluster" to "NavCluster", "Services" to "NavServices", "Attention" to "NavInbox")
  val navigate: (String) -> Unit = {
   tab=it
   detail=""
@@ -166,7 +166,7 @@ private fun stamp(value:String)=try{DateTimeFormatter.ofPattern("dd MMM · HH:mm
  }
  Column(Modifier.weight(1f).fillMaxHeight().offset(x=if(dimMode)shift.dp else 0.dp)){
  Column(Modifier.weight(1f).fillMaxWidth().padding(horizontal = 14.dp)) {
-  if (wide && tab == "Inbox" && (detail.isEmpty() || detail.startsWith("event:"))) {
+  if (wide && tab == "Attention" && (detail.isEmpty() || detail.startsWith("event:"))) {
    Spacer(Modifier.height(12.dp))
   } else if (detail.isEmpty()) {
    if (wide && tab == "Home") {
@@ -198,11 +198,11 @@ private fun stamp(value:String)=try{DateTimeFormatter.ofPattern("dd MMM · HH:mm
 
   if(message.isNotEmpty()){Text(message,color=Mint,fontSize=12.sp);LaunchedEffect(message){delay(2200);message=""}}
   BoxWithConstraints(Modifier.weight(1f)){val viewport=maxHeight
-  AnimatedContent(targetState=if(wide&&tab=="Inbox"&&detail.startsWith("event:"))"Inbox" else detail.ifEmpty{tab},modifier=Modifier.fillMaxSize(),transitionSpec={if(reducedMotion)EnterTransition.None togetherWith ExitTransition.None else fadeIn(tween(180)) togetherWith fadeOut(tween(120))},label="page"){page->
-   if(wide&&tab=="Inbox"&&(page=="Inbox"||page.startsWith("event:"))){
+  AnimatedContent(targetState=if(wide&&tab=="Attention"&&detail.startsWith("event:"))"Attention" else detail.ifEmpty{tab},modifier=Modifier.fillMaxSize(),transitionSpec={if(reducedMotion)EnterTransition.None togetherWith ExitTransition.None else fadeIn(tween(180)) togetherWith fadeOut(tween(120))},label="page"){page->
+   if(wide&&tab=="Attention"&&(page=="Attention"||page.startsWith("event:"))){
     Row(Modifier.fillMaxSize().padding(bottom = 12.dp),horizontalArrangement=Arrangement.spacedBy(8.dp)){
      Column(Modifier.weight(1f).fillMaxHeight().clip(RoundedCornerShape(24.dp)).background(Card).verticalScroll(rememberScrollState()).padding(14.dp)){
-      NotificationInbox(deskPane = true){selectedEvent=it;detail="event:${it.id}"}
+      AttentionScreen(deskPane = true){selectedEvent=it;detail="event:${it.id}"}
      }
      Column(Modifier.weight(1.5f).fillMaxHeight().clip(RoundedCornerShape(24.dp)).background(Card).padding(14.dp)){
       val event = selectedEvent?.takeIf { detail == "event:${it.id}" } ?: currentVerdict().incidents.firstOrNull()
@@ -228,14 +228,13 @@ private fun stamp(value:String)=try{DateTimeFormatter.ofPattern("dd MMM · HH:mm
      page.startsWith("node:")->NodeDetailScreen(page.substringAfter(":")){target->detailHistory=ArrayList(detailHistory+detail);detail=target}
      page.startsWith("app:")->ApplicationScreen(page.substringAfter(":")){target->detailHistory=ArrayList(detailHistory+detail);detail=target}
      page.startsWith("event:")->EventRoute(page.substringAfter(":"),selectedEvent,{selectedEvent=it}){target->detailHistory=ArrayList(detailHistory+detail);detail=target}
-     page=="Attention"->{Title("Needs attention");if(LiveRepository.issues.isEmpty())Text("No current issues",color=Mint);LiveRepository.issues.forEach{item->Column(Modifier.fillMaxWidth().padding(bottom=10.dp).clip(RoundedCornerShape(16.dp)).background(Card).clickable{detail=item.target}.padding(16.dp)){Text(item.title,color=Paper,fontSize=14.sp);Text(item.severity,color=Apricot,fontSize=11.sp)}}}
      page=="Backups"-> {Title("Backups");Info("Destination",when(LiveRepository.backup){true->"Available";false->"Unavailable";null->"Unknown"});Info("Volumes with backup records",if(LiveRepository.backupVolumes==null)"Unavailable"else"${LiveRepository.backupRecorded} / ${LiveRepository.backupVolumes}");Info("Last recorded backup",LiveRepository.backupLast.ifEmpty{"None recorded"})}
      page=="Cluster"->ClusterOverview(
       openHistory = { metric, range -> detail = "cluster-history:$metric@$range" },
       openNode = { detail = "node:$it" }
      )
      page=="Services"->{ServicesTabs(if (servicesSection == "Monitors") "Monitors" else "Integrations") { servicesSection = it };if(servicesSection=="Monitors")MonitorScreen{detail="monitor:$it"}else IntegrationDirectory(openArgo={detail="Apps"}){detail="integration:$it"}}
-     page=="Inbox"->NotificationInbox{selectedEvent=it;detail="event:${it.id}"}
+     page=="Attention"->AttentionScreen{selectedEvent=it;detail="event:${it.id}"}
      page=="Nodes"->Nodes{detail="node:$it"}
      page=="Events"->NotificationInbox{selectedEvent=it;detail="event:${it.id}"}
      page=="Apps"->Apps{detail="app:$it"}

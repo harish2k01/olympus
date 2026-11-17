@@ -47,6 +47,7 @@ internal object Glance {
     val warnText = Color(0xFFF5C26B)
     val warnSurface = Color(0xFF2A2010)
     val crit = Color(0xFFFF6B5E)
+    val info = Color(0xFF6FA8FF)
     val critText = Color(0xFFFF8A7E)
     val critSurface = Color(0xFF2A1412)
     val unknown = Color(0xFFC4CAD1)
@@ -260,7 +261,8 @@ internal fun GlanceScreen(wide: Boolean, nightEnabled: Boolean, openIncident: (L
             Text("CPU ${f.cpu}", color = Glance.muted, fontSize = 14.sp)
             Text("Memory ${f.memory}", color = Glance.muted, fontSize = 14.sp)
             Spacer(Modifier.weight(1f))
-            Text("Tap for details", color = Glance.muted, fontSize = 14.sp)
+            val later = LiveRepository.later.size
+            Text(if (later > 0) "$later for later · tap for details" else "Tap for details", color = Glance.muted, fontSize = 14.sp)
         }
     }
 

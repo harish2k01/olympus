@@ -26,10 +26,10 @@ internal data class DeskPalette(
 )
 
 internal val DarkDesk = DeskPalette(
- Color(0xFF0F1115), Color(0xFF1A1D24), Color(0xFF232733),
- Color(0xFFE6E8EE), Color(0xFFA7ADBB), Color(0xFF9CCBFF),
- Color(0xFF5268EF), Color(0xFFC7BFED), Color(0xFFFFB86B), Color(0xFFB5DEC6),
- Color(0xFF3A2B14), Color(0xFFFFD9A8), Color(0xFF2C3A4F), Color(0xFFFF8A65), Color(0xFF2B3040), Color(0xFF0A2036), Color(0xFFCFE5FF)
+ Color(0xFF0A0C0F), Color(0xFF13171C), Color(0xFF1F262E),
+ Color(0xFFE8EAED), Color(0xFF9AA3AD), Color(0xFF6FA8FF),
+ Color(0xFF5268EF), Color(0xFFC7BFED), Color(0xFFF5A524), Color(0xFF3DD68C),
+ Color(0xFF2A2010), Color(0xFFF5C26B), Color(0xFF1F262E), Color(0xFFFF6B5E), Color(0xFF232A32), Color(0xFF0A0C0F), Color(0xFFE8EAED)
 )
 
 internal val LightDesk = DeskPalette(

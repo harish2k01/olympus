@@ -92,6 +92,7 @@ type Snapshot struct {
 	ActionsEnabled bool `json:"actionsEnabled"`
 	Errors                  []string           `json:"errors"`
 	Issues                  []Issue            `json:"issues"`
+	Later []Chore `json:"later"`
 }
 type vector struct {
 	Metric map[string]string `json:"metric"`
@@ -100,6 +101,7 @@ type vector struct {
 type server struct {
  pairing pairingCodes
  actions *actionPolicy
+ external externalCache
  metricCache map[string]metricCacheEntry
 	client                                  *http.Client
 	kube                                    *http.Client
@@ -316,6 +318,7 @@ func (s *server) snapshot(ctx context.Context) Snapshot {
 	}
 	s.enrichApps(ctx, &out)
 	s.attention(ctx, &out)
+	s.chores(ctx, &out)
 	s.collectIncidents(ctx, &out)
 	out.Integrations = s.serviceIntegrations(ctx)
 	s.cached = out
