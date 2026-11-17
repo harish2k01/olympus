@@ -46,8 +46,6 @@ import androidx.compose.ui.window.DialogProperties
 import dev.olympus.desk.data.*
 
 internal val LocalShowTests=staticCompositionLocalOf{false}
-internal val LocalGridColumns=staticCompositionLocalOf{8}
-internal val LocalGridGap=staticCompositionLocalOf{10}
 
 @Composable internal fun SettingsScreen(prefs:SharedPreferences,dimMode:Boolean,dim:Float,reduced:Boolean,awake:Boolean,tests:Boolean,dock:Int,gap:Int,setDimMode:(Boolean)->Unit,setDim:(Float)->Unit,setReduced:(Boolean)->Unit,setAwake:(Boolean)->Unit,setTests:(Boolean)->Unit,setDock:(Int)->Unit,setGap:(Int)->Unit,monitors:()->Unit,home:(String)->Unit,close:()->Unit,focus:Boolean,setFocus:(Boolean)->Unit){
 
