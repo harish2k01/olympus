@@ -190,8 +190,10 @@ internal fun GlanceScreen(wide: Boolean, nightEnabled: Boolean, openIncident: (L
     var now by remember { mutableStateOf(ZonedDateTime.now()) }
     LaunchedEffect(Unit) { while (true) { now = ZonedDateTime.now(); delay(1000L * (60 - now.second).coerceIn(1, 60)) } }
     val state = currentVerdict()
-    val shift = ((now.minute % 5) - 2).dp
-    val night = nightEnabled && isNightHour(now.hour) && state.verdict != Verdict.Critical
+    val prefs = androidx.compose.ui.platform.LocalContext.current.getSharedPreferences("home-v3", 0)
+    val shift = if (prefs.getBoolean("burnIn", true)) ((now.minute % 5) - 2).dp else 0.dp
+    val wakeOnCritical = prefs.getBoolean("wakeOnCritical", true)
+    val night = nightEnabled && isNightHour(now.hour) && !(wakeOnCritical && state.verdict == Verdict.Critical)
     val instant = now.toInstant()
     val activity = androidx.activity.compose.LocalActivity.current
     // At night the panel drops to near-minimum backlight; a critical incident ends night mode and restores it.

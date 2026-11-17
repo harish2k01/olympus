@@ -27,6 +27,7 @@ internal fun ClusterOverview(
  openNode: (String) -> Unit
 ) {
  ClusterChores()
+ ClusterNodeCards(openNode)
  var metric by rememberSaveable { mutableStateOf("cpu") }
  @Composable fun metricOverview() {
   MetricHistoryPanel(
@@ -142,6 +143,40 @@ private fun ClusterChores() {
    if (chores.isEmpty()) Text("Certificates, volumes and Talos are up to date", color = DeskColors.text, fontSize = 15.sp)
    chores.take(3).forEach { Text(it.title, color = DeskColors.text, fontSize = 15.sp, maxLines = 1) }
    if (chores.size > 3) Text("+ ${chores.size - 3} more in Attention", color = DeskColors.muted, fontSize = 13.sp)
+  }
+ }
+}
+
+/** One card per node with CPU and memory bars; amber when a node is busy, red when not ready. */
+@Composable
+private fun ClusterNodeCards(openNode: (String) -> Unit) {
+ val nodes = LiveRepository.nodes
+ if (nodes.isEmpty()) return
+ Row(Modifier.fillMaxWidth().padding(bottom = 10.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+  nodes.forEach { node ->
+   val memory = if (node.memoryTotalGiB > 0) node.memoryUsedGiB / node.memoryTotalGiB * 100 else null
+   val cpu = node.cpuPercent.takeIf { node.available }
+   val busy = (cpu ?: 0f) > 70f || (memory ?: 0f) > 85f
+   Column(Modifier.weight(1f).clip(RoundedCornerShape(16.dp)).background(DeskColors.surface)
+    .clickable(role = Role.Button, onClickLabel = "Open node") { openNode(node.name) }.padding(14.dp),
+    verticalArrangement = Arrangement.spacedBy(6.dp)) {
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+     Box(Modifier.size(9.dp).clip(RoundedCornerShape(if (busy) 2.dp else 5.dp))
+      .background(if (!node.ready) Glance.crit else if (busy) Glance.warn else Glance.ok))
+     Text(node.name, color = DeskColors.text, fontSize = 16.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+    }
+    @Composable fun bar(label: String, value: Float?) {
+     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+      Text(label, color = DeskColors.muted, fontSize = 12.sp)
+      Text(value?.let { "${it.roundToInt()}%" } ?: "—", color = DeskColors.text, fontSize = 12.sp)
+     }
+     LinearProgressIndicator(progress = { ((value ?: 0f) / 100f).coerceIn(0f, 1f) }, Modifier.fillMaxWidth().height(6.dp).clip(RoundedCornerShape(3.dp)),
+      color = if ((value ?: 0f) > 80f) Glance.warn else Glance.info, trackColor = DeskColors.track, drawStopIndicator = {})
+    }
+    bar("CPU", cpu)
+    bar("Memory", memory)
+    Text(if (node.ready) "${node.cores} cores · ${node.role}" else "Not ready", color = if (node.ready) DeskColors.muted else Glance.crit, fontSize = 12.sp)
+   }
   }
  }
 }

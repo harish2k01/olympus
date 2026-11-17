@@ -99,6 +99,12 @@ internal val LocalShowTests=staticCompositionLocalOf{false}
           var night by remember { mutableStateOf(prefs.getBoolean("nightMode", true)) }
           SettingSwitch("Night mode 23:00–07:00", night) { night = it; prefs.edit().putBoolean("nightMode", it).apply() }
           SettingsDivider()
+          var burnIn by remember { mutableStateOf(prefs.getBoolean("burnIn", true)) }
+          SettingSwitch("Burn-in protection", burnIn) { burnIn = it; prefs.edit().putBoolean("burnIn", it).apply() }
+          SettingsDivider()
+          var wake by remember { mutableStateOf(prefs.getBoolean("wakeOnCritical", true)) }
+          SettingSwitch("Wake bright on critical", wake) { wake = it; prefs.edit().putBoolean("wakeOnCritical", it).apply() }
+          SettingsDivider()
           SettingsAction("Android Home screen widget") { section = "Home" }
          }
          CompanionPanel("Display") {
@@ -401,7 +407,7 @@ internal fun ServicesTabs(selected: String, select: (String) -> Unit) {
  CompanionPanel("Uptime Kuma") {
   val matches = monitors.filter { it.name.contains(search, true) && (status == "All" || it.status == status) }
   // Problems first, then slowest first, so the screen answers "what is struggling?"
-  val rows = matches.sortedWith(compareBy<MonitorState>({ when (it.status) { "Down" -> 0; "Unknown" -> 1; "Up" -> 3; else -> 2 } }, { -(it.responseMs ?: -1f) }))
+  val rows = monitorOrder(matches)
   if (rows.isEmpty()) Text("No matching monitors", color = DeskColors.muted, fontSize = 13.sp)
   rows.forEachIndexed { index, monitor ->
    if (index > 0) HorizontalDivider(color = DeskColors.raised)
