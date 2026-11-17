@@ -1,16 +1,15 @@
 # Olympus
 
-A native Android companion for a Kubernetes homelab, built with Kotlin and Jetpack Compose. Olympus shows a live verdict, resource usage, service health, and an incident inbox. The four destinations appear in a side rail on the desk and a bottom bar in handheld mode.
+An always-on Android display for a Kubernetes homelab, built with Kotlin and Jetpack Compose. A phone propped beside the server shows a glance readable from across the room: a clock, one verdict (All clear, N need you, or Unknown) and either four vitals or the incidents that need you. Tap to walk into Attention, Cluster and Services. Design: https://claude.ai/artifact/CCCRNeenwimTcfMFzc8ZVs
 
 ## Current status
 
 The app receives live state over one authenticated Server-Sent Events connection while visible. The Go backend shares collectors between clients, samples metrics every 15 seconds, and receives Kubernetes watch changes and authenticated webhooks. CPU is a five-minute rate; freshness is bounded by the upstream scrape interval. Reconnection uses exponential backoff and a fresh full snapshot. Missing readings remain unavailable; cached readings are marked when disconnected. Cluster write actions are not exposed.
 
-Home supports drag placement, independent width and height resizing, widget previews, and undo. Portrait and landscape layouts are stored separately and can be exported as JSON. Upgrades replace previous stock layouts and keep a copy available through **Restore previous layout**. Custom layouts keep their configuration.
+The glance has fixed landscape and portrait layouts. It shifts a few pixels every minute against burn-in, fades its figures and shows their age when data is stale, and switches to a dim night view from 23:00 to 07:00 (minimum backlight) unless a critical incident is firing. Snoozed incidents leave the verdict.
+The Home verdict uses firing warning and critical incidents and confirmed source availability. Pending conditions appear as watching.
 
-The Home verdict uses firing warning and critical incidents and confirmed source availability. Pending conditions appear as watching. Desk mode opens a dim, black clock view after the configured idle time and returns to Home on touch or when a new incident fires.
-
-**Cluster** shows CPU and memory history, node usage, and Argo CD application health. **Services** shows Uptime Kuma checks and integration data. **Inbox** filters firing, pending, resolved, notice, and Kubernetes event records. Incident details include related resources, timestamps, and backend-supplied investigation advice for supported incidents.
+**Cluster** shows CPU and memory history, node usage, and Argo CD application health. **Services** shows Uptime Kuma checks and integration data. **Attention** splits Now, Later (non-urgent chores from the backend), Snoozed and History. History filters firing, pending, resolved, notice, and Kubernetes event records. Incident details include related resources, timestamps, and backend-supplied investigation advice for supported incidents.
 
 
 Node details include condition tables, capacity and allocatable values, allocated requests/limits, non-terminated workloads, addresses, system information, and events. Application resource maps follow Argo-managed resources and Kubernetes controller ownership, including operator-created workloads. Secrets appear only as resource metadata; their contents are never read for the map. CPU/memory sparklines are available under application usage.
@@ -19,7 +18,7 @@ Webhook history persists on a 1 GiB volume and is bounded to 2,000 records and 3
 
 Backup destination availability, recorded volume backup coverage, and the last recorded backup are separate values. Backup records do not establish restore verification. The backend serves allowlisted app icons from the existing chart metadata. Android caches these images locally and falls back to initials. In-session sparklines retain up to 60 samples; the node detail CPU chart queries 15 minutes of Prometheus history.
 
-Settings includes appearance, desk timing, layout, notification channels, and pairing. Services displays the response time and 24-hour uptime reported by Uptime Kuma. The Home screen widgets display a dated snapshot, and the Desk mode tile toggles ambient behavior.
+Settings includes appearance, night mode, keep-awake, notification channels and pairing. Services displays the response time and 24-hour uptime reported by Uptime Kuma.
 
 ## Development
 
