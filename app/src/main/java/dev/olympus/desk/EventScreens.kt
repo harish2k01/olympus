@@ -232,6 +232,7 @@ private fun groupingKey(e: LabEvent) =
    }
   }
  }
+ IncidentActions(event)
  Row(Modifier.fillMaxWidth().padding(vertical=6.dp).horizontalScroll(rememberScrollState()),horizontalArrangement=Arrangement.spacedBy(8.dp)){
   if(event.pod.isNotBlank()&&event.namespace.isNotBlank())DeskAction("Inspect workload",true){open("pod:${event.namespace}/${event.pod}@${event.node}")}
   if(event.node.isNotBlank())DeskAction("Node · ${event.node}"){open("node:${event.node}")}

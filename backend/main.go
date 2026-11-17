@@ -88,6 +88,8 @@ type Snapshot struct {
 	BackupVolumes           *int               `json:"backupVolumes"`
 	BackupRecorded          *int               `json:"backupRecorded"`
 	BackupLast              string             `json:"backupLast"`
+	Restarts24h *float64 `json:"restarts24h"`
+	ActionsEnabled bool `json:"actionsEnabled"`
 	Errors                  []string           `json:"errors"`
 	Issues                  []Issue            `json:"issues"`
 }
@@ -97,6 +99,7 @@ type vector struct {
 }
 type server struct {
  pairing pairingCodes
+ actions *actionPolicy
  metricCache map[string]metricCacheEntry
 	client                                  *http.Client
 	kube                                    *http.Client
@@ -278,6 +281,8 @@ func (s *server) snapshot(ctx context.Context) Snapshot {
 	}
 	out.MonitorsUp = s.scalar(ctx, `sum(monitor_status == bool 1)`)
 	out.MonitorsTotal = s.scalar(ctx, `count(monitor_status)`)
+	out.Restarts24h = s.scalar(ctx, `sum(increase(kube_pod_container_status_restarts_total[24h]))`)
+	out.ActionsEnabled = s.actions != nil && s.actions.enabled
 	out.Monitors = s.monitorList(ctx)
  s.collectMetricObservations(ctx, &out)
 	out.Download = s.scalar(ctx, `sum(qbittorrent_global_download_speed_bytes) / 1048576`)
@@ -523,6 +528,7 @@ func main() {
 	pool := x509.NewCertPool()
 	pool.AppendCertsFromPEM(ca)
 	s := &server{client: &http.Client{Timeout: 8 * time.Second}, kube: &http.Client{Timeout: 8 * time.Second, Transport: &http.Transport{TLSClientConfig: &tls.Config{RootCAs: pool, MinVersion: tls.VersionTLS12}}}, prom: env("PROMETHEUS_URL", "http://kube-prometheus-stack-prometheus.monitoring.svc:9090"), kubeURL: env("KUBE_URL", "https://kubernetes.default.svc"), sa: strings.TrimSpace(string(sa)), token: token, hook: hook, events: []Event{}, wake: make(chan struct{}, 1), history: os.Getenv("HISTORY_FILE")}
+	s.actions = loadActionPolicy(os.Getenv("ACTIONS_ENABLED"), os.Getenv("ACTION_NAMESPACES"))
 	s.loadHistory()
 	s.loadIntegrations()
 	s.live.changed = make(chan struct{})
@@ -535,6 +541,7 @@ func main() {
 	mux.HandleFunc("/v1/stream", s.stream)
  mux.HandleFunc("/v1/pairing/code", s.issuePairingCode)
  mux.HandleFunc("/v1/pairing/exchange", s.exchangePairingCode)
+ mux.HandleFunc("/v1/actions/restart", s.restartAction)
 	mux.HandleFunc("/v1/", s.api)
 	mux.HandleFunc("/hooks/", s.webhook)
 	slog.Info("server_started", "port", 8080, "history_enabled", s.history != "")

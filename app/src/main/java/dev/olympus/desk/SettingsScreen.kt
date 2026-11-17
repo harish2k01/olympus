@@ -46,8 +46,6 @@ import androidx.compose.ui.window.DialogProperties
 import dev.olympus.desk.data.*
 
 internal val LocalShowTests=staticCompositionLocalOf{false}
-internal val LocalGridColumns=staticCompositionLocalOf{8}
-internal val LocalGridGap=staticCompositionLocalOf{10}
 
 @Composable internal fun SettingsScreen(prefs:SharedPreferences,dimMode:Boolean,dim:Float,reduced:Boolean,awake:Boolean,tests:Boolean,dock:Int,gap:Int,setDimMode:(Boolean)->Unit,setDim:(Float)->Unit,setReduced:(Boolean)->Unit,setAwake:(Boolean)->Unit,setTests:(Boolean)->Unit,setDock:(Int)->Unit,setGap:(Int)->Unit,monitors:()->Unit,home:(String)->Unit,close:()->Unit,focus:Boolean,setFocus:(Boolean)->Unit){
 
@@ -98,10 +96,11 @@ internal val LocalGridGap=staticCompositionLocalOf{10}
           SettingsDivider()
           Box(Modifier.clickable { section = "Connection" }) { SettingsValue("Authentication", "Token") }
          }
-         CompanionPanel("Layouts") {
-          SettingsAction("Portrait layout") { section = "Home" }
+         CompanionPanel("Glance") {
+          var night by remember { mutableStateOf(prefs.getBoolean("nightMode", true)) }
+          SettingSwitch("Night mode 23:00–07:00", night) { night = it; prefs.edit().putBoolean("nightMode", it).apply() }
           SettingsDivider()
-          SettingsAction("Landscape layout") { section = "Home" }
+          SettingsAction("Android Home screen widget") { section = "Home" }
          }
          CompanionPanel("Display") {
           SettingSwitch("Reduced motion", reduced) { bool("reducedMotion", it, setReduced) }
@@ -176,34 +175,6 @@ internal val LocalGridGap=staticCompositionLocalOf{10}
           }
          }
          if (widgetMessage.isNotEmpty()) Text(widgetMessage, color = DeskColors.muted, fontSize = 12.sp)
-         SettingsHeading("Layouts")
-         SettingsGroup {
-          listOf(false, true).forEachIndexed { index, landscape ->
-           if (index > 0) SettingsDivider()
-           val key = if (landscape) "landscape-v7" else "portrait-v7"
-           val count = prefs.getString(key, null)?.let { encoded -> runCatching { DeskLayout.decode(encoded).size }.getOrNull() }
-           SettingsValue(if (landscape) "Landscape layout" else "Portrait layout", count?.let { "$it widgets" } ?: "Default")
-          }
-         }
-         SettingsGroup{SettingsRange("Widget spacing","${gap}dp",gap.toFloat(),6f..16f,9){val n=it.toInt();prefs.edit().putInt("gridGap",n).apply();setGap(n)}}
-         SettingsGroup{
-          listOf("Edit Home","Add widget","Export layout","Import layout","Restore previous layout").forEachIndexed{i,action->if(i>0)SettingsDivider();SettingsAction(action){home(action)}}
-         }
-         SettingsGroup{
-          SettingsAction("Reset this layout",warning=true){resetPending=!resetPending}
-          if(resetPending)Dialog(onDismissRequest={resetPending=false},properties=DialogProperties(usePlatformDefaultWidth=false,decorFitsSystemWindows=false)){
-           ImmersiveDialogWindow()
-           Box(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.displayCutout).padding(20.dp),contentAlignment=Alignment.Center){
-            Surface(color=DeskColors.surface,contentColor=DeskColors.text,shape=RoundedCornerShape(20.dp),modifier=Modifier.widthIn(max=360.dp).fillMaxWidth()){
-             Column(Modifier.padding(20.dp),verticalArrangement=Arrangement.spacedBy(16.dp)){
-              Text("Reset this layout?",fontSize=18.sp,fontWeight=FontWeight.SemiBold)
-              Text("Replace the current orientation’s widgets with the defaults?",color=DeskColors.muted,fontSize=13.sp,lineHeight=19.sp)
-              Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(8.dp,Alignment.End)){DeskAction("Cancel"){resetPending=false};DeskAction("Reset layout",true){home("Reset this layout")}}
-             }
-            }
-           }
-          }
-         }
         }
         "Events"->{
          CompanionPanel("") {
