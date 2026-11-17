@@ -162,9 +162,17 @@ private fun groupingKey(e: LabEvent) =
  val firing = event.state == "Firing"
  val severity = if (event.kind.equals("critical", true)) Verdict.Critical else Verdict.Attention
  val heroInk = if (firing) DeskColors.onAttention else EventPaper
- Column(Modifier.fillMaxWidth().padding(vertical = 4.dp).clip(RoundedCornerShape(24.dp))
+ val wideHero = wideWindow() && firing
+ Row(Modifier.fillMaxWidth().padding(vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+ Column(Modifier.weight(1f).clip(RoundedCornerShape(24.dp))
   .background(if (firing) DeskColors.attentionSurface else DeskColors.surface).padding(16.dp),
   verticalArrangement = Arrangement.spacedBy(8.dp)) {
+  Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+   if (firing) Text(event.kind.ifBlank { "warning" }.uppercase(), Modifier.clip(RoundedCornerShape(8.dp)).background(if (severity == Verdict.Critical) Glance.crit else Glance.warn).padding(horizontal = 10.dp, vertical = 5.dp),
+    color = Glance.ground, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+   Spacer(Modifier.weight(1f))
+   if (event.time.isNotBlank()) Text("since ${inboxTime(event.time)}", color = heroInk, fontSize = 13.sp)
+  }
   Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
    Row(Modifier.clip(CircleShape).background(DeskColors.raised).padding(horizontal = 12.dp, vertical = 8.dp),
     horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -180,6 +188,10 @@ private fun groupingKey(e: LabEvent) =
   Text(incidentTitle(event), color = heroInk, fontSize = 27.sp, lineHeight = 29.sp, fontWeight = FontWeight.Bold)
   val description = data?.optString("message").orEmpty().ifBlank { data?.optString("description").orEmpty() }
   if (description.isNotBlank() && description != event.title) Text(description, color = heroInk, fontSize = 14.sp)
+  if (event.nextStep.isNotBlank()) Text("Suggested: ${event.nextStep}", color = heroInk, fontSize = 14.sp)
+  if (!wideHero) IncidentActions(event)
+ }
+ if (wideHero) Column(Modifier.width(220.dp)) { IncidentActions(event, vertical = true) }
  }
  val resource = listOf(event.namespace, event.pod).filter(String::isNotBlank).joinToString(" / ").ifBlank { event.resource }
  if (resource.isNotBlank() || event.node.isNotBlank()) Row(
@@ -213,9 +225,6 @@ private fun groupingKey(e: LabEvent) =
   fun encoded(value: String) = java.net.URLEncoder.encode(value, "UTF-8")
   MetricHistoryPanel("kind=$historyKind&namespace=${encoded(event.namespace)}&pod=${encoded(event.pod)}&container=${encoded(event.container)}")
  }
- if (event.nextStep.isNotBlank()) CompanionPanel("Next step") {
-  Text(event.nextStep, color = EventPaper, fontSize = 14.sp)
- }
  CompanionPanel("Timeline") {
   val moments = listOf(
    event.state.ifBlank { "Observed" } to event.time,
@@ -232,7 +241,6 @@ private fun groupingKey(e: LabEvent) =
    }
   }
  }
- IncidentActions(event)
  Row(Modifier.fillMaxWidth().padding(vertical=6.dp).horizontalScroll(rememberScrollState()),horizontalArrangement=Arrangement.spacedBy(8.dp)){
   if(event.pod.isNotBlank()&&event.namespace.isNotBlank())DeskAction("Inspect workload",true){open("pod:${event.namespace}/${event.pod}@${event.node}")}
   if(event.node.isNotBlank())DeskAction("Node · ${event.node}"){open("node:${event.node}")}

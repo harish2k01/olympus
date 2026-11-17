@@ -80,8 +80,13 @@ private fun AttentionIncidentRow(event: LabEvent, open: (LabEvent) -> Unit) {
             Text(incidentTitle(event), color = DeskColors.text, fontSize = 17.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
             if (sub.isNotBlank()) Text(sub, color = DeskColors.muted, fontSize = 13.sp, maxLines = 1)
         }
-        if (Snoozes.isSnoozed(event)) Text("Snoozed", color = DeskColors.muted, fontSize = 13.sp)
-        Text("Open", color = DeskColors.blue, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+        val snoozed = Snoozes.isSnoozed(event)
+        Box(Modifier.heightIn(min = 44.dp).clip(RoundedCornerShape(12.dp)).border(1.dp, DeskColors.raised, RoundedCornerShape(12.dp))
+            .clickable(role = Role.Button) { if (snoozed) Snoozes.clear(event) else Snoozes.snooze(event, 60) }.padding(horizontal = 14.dp),
+            contentAlignment = Alignment.Center) { Text(if (snoozed) "Unsnooze" else "Snooze 1 h", color = DeskColors.text, fontSize = 14.sp) }
+        Box(Modifier.heightIn(min = 44.dp).clip(RoundedCornerShape(12.dp)).background(if (critical) Glance.crit else DeskColors.blue)
+            .clickable(role = Role.Button) { open(event) }.padding(horizontal = 16.dp),
+            contentAlignment = Alignment.Center) { Text("Open", color = Glance.ground, fontSize = 14.sp, fontWeight = FontWeight.SemiBold) }
     }
 }
 

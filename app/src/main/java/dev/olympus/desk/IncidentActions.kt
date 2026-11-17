@@ -18,7 +18,7 @@ import kotlinx.coroutines.withContext
 
 /** Snooze and the allowlisted restart for a firing incident. Restart always asks first. */
 @Composable
-internal fun IncidentActions(event: LabEvent) {
+internal fun IncidentActions(event: LabEvent, vertical: Boolean = false) {
     if (event.state != "Firing") return
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -28,7 +28,7 @@ internal fun IncidentActions(event: LabEvent) {
     var message by remember(event.id) { mutableStateOf("") }
     val snoozed = Snoozes.isSnoozed(event)
 
-    Row(Modifier.fillMaxWidth().padding(vertical = 6.dp).horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+    @Composable fun buttons() {
         if (LiveRepository.actionsEnabled && target != null)
             DeskAction("Restart ${target.kind}…", primary = true, enabled = !busy) { confirming = true }
         if (snoozed) DeskAction("Unsnooze") { Snoozes.clear(event); message = "Back on the glance" }
@@ -37,6 +37,9 @@ internal fun IncidentActions(event: LabEvent) {
             DeskAction("Snooze 8 h") { Snoozes.snooze(event, 480); message = "Snoozed for 8 hours" }
         }
     }
+    if (vertical) Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp)) { buttons() }
+    else Row(Modifier.fillMaxWidth().padding(vertical = 6.dp).horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) { buttons() }
+    if (vertical) Text("Actions ask to confirm and are logged.", color = DeskColors.muted, fontSize = 12.sp, modifier = Modifier.padding(top = 8.dp))
     if (message.isNotEmpty()) Text(message, color = DeskColors.muted, fontSize = 13.sp)
 
     if (confirming && target != null) AlertDialog(

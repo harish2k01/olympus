@@ -194,7 +194,7 @@ private fun stamp(value:String)=try{DateTimeFormatter.ofPattern("dd MMM · HH:mm
       openHistory = { metric, range -> detail = "cluster-history:$metric@$range" },
       openNode = { detail = "node:$it" }
      )
-     page=="Services"->{ServicesTabs(if (servicesSection == "Monitors") "Monitors" else "Integrations") { servicesSection = it };if(servicesSection=="Monitors")MonitorScreen{detail="monitor:$it"}else IntegrationDirectory(openArgo={detail="Apps"}){detail="integration:$it"}}
+     page=="Services"->{ServicesSummary();ServicesTabs(if (servicesSection == "Monitors") "Monitors" else "Integrations") { servicesSection = it };if(servicesSection=="Monitors")MonitorScreen{detail="monitor:$it"}else IntegrationDirectory(openArgo={detail="Apps"}){detail="integration:$it"}}
      page=="Attention"->AttentionScreen{selectedEvent=it;detail="event:${it.id}"}
      page=="Nodes"->Nodes{detail="node:$it"}
      page=="Events"->NotificationInbox{selectedEvent=it;detail="event:${it.id}"}
