@@ -174,6 +174,15 @@ private fun stamp(value:String)=try{DateTimeFormatter.ofPattern("dd MMM · HH:mm
   }
   previousIncidentKeys = incidentKeys
  }
+ if (tab == "Home" && detail.isEmpty() && !settings) {
+  GlanceScreen(
+   wide = wide,
+   nightEnabled = prefs.getBoolean("nightMode", true),
+   openIncident = { incident -> tab = "Inbox"; selectedEvent = incident; detail = "event:${incident.id}"; detailHistory = arrayListOf() },
+   openAttention = { tab = "Inbox"; detail = ""; detailHistory = arrayListOf() }
+  )
+  return@CompositionLocalProvider
+ }
  if (deskIdleEnabled && ambient) {
   AmbientDesk(verdictState) { lastInteraction = android.os.SystemClock.elapsedRealtime() }
   return@CompositionLocalProvider
@@ -227,12 +236,7 @@ private fun stamp(value:String)=try{DateTimeFormatter.ofPattern("dd MMM · HH:mm
    if(editing){if(previousLayout!=null)TextButton(onClick={val old=previousLayout;val entry=undoHistory.lastOrNull();if(entry!=null&&!entry.startsWith("[")){gridColumns=JSONObject(entry).optInt("columns",gridColumns);if(wide)prefs.edit().putInt("landscape-columns-v7",gridColumns).apply()};undoHistory=ArrayList(undoHistory.dropLast(1));widgets=old;prefs.edit().putString(layoutKey,DeskLayout.encode(old)).apply()}){Text("Undo",color=Cobalt)};TextButton(onClick={picker=true}){Text("+ Widget",color=Cobalt)};TextButton(onClick={editing=false}){Text("Done",color=Mint)}}
    else Row{if(detail.isEmpty()&&tab=="Home"&&!compactHeader)IconButton(onClick={editing=true},modifier=Modifier.size(44.dp)){LabGlyph("Edit",Muted,20.dp)};if(detail.isEmpty())IconButton(onClick={settings=true},modifier=Modifier.size(44.dp)){LabGlyph("Settings",Muted,21.dp)};Box{
     IconButton(onClick={menu=true},modifier=Modifier.size(44.dp).semantics { contentDescription = "More options" }){Text("•••",color=Muted)}
-    DeskPopup(menu,{menu=false},if(detail.isNotBlank())listOf("Copy reference" to {(context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager).setPrimaryClip(ClipData.newPlainText("Olympus resource",detail));message="Reference copied"})else listOf(
-     "Edit Home" to {tab="Home";detail="";editing=true},
-     "Add widget" to {tab="Home";detail="";picker=true},
-     "Export layout" to {(context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager).setPrimaryClip(ClipData.newPlainText("Olympus layout",DeskLayout.encode(widgets)));message="Layout copied"},
-     "Import layout" to {importLayout=true},
-     "Restore previous layout" to {val previousDefault = prefs.getString(priorDefaultKey, null); val old=previousDefault ?: prefs.getString(if(wide)"landscape-v6"else"portrait-v6",null);if(old!=null)try{save(DeskLayout.decode(old));gridColumns=if(!wide)4 else if(previousDefault!=null)8 else 6;if(wide)prefs.edit().putInt("landscape-columns-v7",gridColumns).apply();message="Previous layout restored"}catch(_:Exception){message="Previous layout unavailable"}else message="No previous layout"},"Settings" to {settings=true}))
+    DeskPopup(menu,{menu=false},if(detail.isNotBlank())listOf("Copy reference" to {(context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager).setPrimaryClip(ClipData.newPlainText("Olympus resource",detail));message="Reference copied"})else listOf("Settings" to {settings=true}))
    }}
   }
 
