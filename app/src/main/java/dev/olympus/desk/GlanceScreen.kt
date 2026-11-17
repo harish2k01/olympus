@@ -192,7 +192,7 @@ internal fun GlanceScreen(wide: Boolean, nightEnabled: Boolean, openIncident: (L
     val shift = ((now.minute % 5) - 2).dp
     val night = nightEnabled && isNightHour(now.hour) && state.verdict != Verdict.Critical
     val instant = now.toInstant()
-    val activity = androidx.compose.ui.platform.LocalContext.current as? android.app.Activity
+    val activity = androidx.activity.compose.LocalActivity.current
     // At night the panel drops to near-minimum backlight; a critical incident ends night mode and restores it.
     DisposableEffect(night, activity) {
         val window = activity?.window
