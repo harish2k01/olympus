@@ -230,7 +230,9 @@ internal fun GlanceScreen(wide: Boolean, nightEnabled: Boolean, openIncident: (L
             }
             Row(Modifier.weight(1f), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 Vital("Services up", f.servicesUp, f.servicesTotal, stale, Modifier.weight(1f).fillMaxHeight())
-                Vital("Memory", f.memory, null, stale, Modifier.weight(1f).fillMaxHeight())
+                val restarts = LiveRepository.restarts24h
+                if (restarts != null) Vital("Restarts · 24 h", restarts.toString(), null, stale, Modifier.weight(1f).fillMaxHeight())
+                else Vital("Memory", f.memory, null, stale, Modifier.weight(1f).fillMaxHeight())
             }
         }
     }
@@ -249,7 +251,7 @@ internal fun GlanceScreen(wide: Boolean, nightEnabled: Boolean, openIncident: (L
                 .then(if (live) Modifier.background(Glance.ok) else Modifier.border(2.dp, Glance.muted, RoundedCornerShape(4.dp))))
             Text(liveText, color = Glance.muted, fontSize = 14.sp, modifier = Modifier.padding(start = 0.dp))
             Text("CPU ${f.cpu}", color = Glance.muted, fontSize = 14.sp)
-            if (state.incidents.isNotEmpty()) Text("Memory ${f.memory}", color = Glance.muted, fontSize = 14.sp)
+            Text("Memory ${f.memory}", color = Glance.muted, fontSize = 14.sp)
             Spacer(Modifier.weight(1f))
             Text("Tap for details", color = Glance.muted, fontSize = 14.sp)
         }

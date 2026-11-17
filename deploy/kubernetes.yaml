@@ -49,6 +49,30 @@ roleRef:
   name: olympus-readonly
   apiGroup: rbac.authorization.k8s.io
 ---
+# Rollout restarts from the Olympus app. The backend also requires ACTIONS_ENABLED=true and
+# refuses kube-system, kube-public, kube-node-lease, olympus and argocd regardless of this role.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: olympus-actions
+rules:
+  - apiGroups: [apps]
+    resources: [deployments, statefulsets, daemonsets]
+    verbs: [patch]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: olympus-actions
+subjects:
+  - kind: ServiceAccount
+    name: olympus
+    namespace: olympus
+roleRef:
+  kind: ClusterRole
+  name: olympus-actions
+  apiGroup: rbac.authorization.k8s.io
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -80,6 +104,7 @@ spec:
             - {name: HISTORY_FILE, value: /data/events.json}
             - {name: ARGOCD_URL, value: "https://argocd.k8s.harish2k01.xyz"}
             - {name: GRAFANA_URL, value: "https://grafana.k8s.harish2k01.xyz"}
+            - {name: ACTIONS_ENABLED, value: "true"}
           volumeMounts:
             - {name: history, mountPath: /data}
           resources:

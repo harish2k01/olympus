@@ -49,6 +49,7 @@ class MainActivity:ComponentActivity(){
         }
         notificationTarget=intent.getStringExtra("eventId").orEmpty()
         pairFromDebugIntent(intent)
+        Snoozes.init(this)
         if(getSharedPreferences("home-v3",0).getBoolean("backgroundAlerts",false))startForegroundService(Intent(this,AlertWatchService::class.java))
         lifecycleScope.launch {
             val settings = getSharedPreferences("home-v3", MODE_PRIVATE)

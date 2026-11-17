@@ -61,7 +61,7 @@ internal fun currentVerdict(): VerdictState {
         val age = LiveRepository.observedAt[name]?.let { observationAgeSeconds(it, now) }
         available && classifyFreshness(age) != Freshness.Stale
     }
-    return resolveVerdict(LiveRepository.state, verifiedSources, LiveRepository.active)
+    return resolveVerdict(LiveRepository.state, verifiedSources, LiveRepository.active.filterNot { Snoozes.isSnoozed(it) })
 }
 
 @Composable
