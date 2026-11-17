@@ -47,9 +47,8 @@ import dev.olympus.desk.data.*
 
 internal val LocalShowTests=staticCompositionLocalOf{false}
 
-@Composable internal fun SettingsScreen(prefs:SharedPreferences,dimMode:Boolean,dim:Float,reduced:Boolean,awake:Boolean,tests:Boolean,dock:Int,gap:Int,setDimMode:(Boolean)->Unit,setDim:(Float)->Unit,setReduced:(Boolean)->Unit,setAwake:(Boolean)->Unit,setTests:(Boolean)->Unit,setDock:(Int)->Unit,setGap:(Int)->Unit,monitors:()->Unit,home:(String)->Unit,close:()->Unit,focus:Boolean,setFocus:(Boolean)->Unit){
+@Composable internal fun SettingsScreen(prefs:SharedPreferences,reduced:Boolean,awake:Boolean,tests:Boolean,setReduced:(Boolean)->Unit,setAwake:(Boolean)->Unit,setTests:(Boolean)->Unit,monitors:()->Unit,close:()->Unit){
 
- var resetPending by remember{mutableStateOf(false)}
  var cacheCleared by remember{mutableStateOf(false)}
  val context=LocalContext.current
  var watch by remember{mutableStateOf(prefs.getBoolean("backgroundAlerts",false))}
@@ -106,14 +105,9 @@ internal val LocalShowTests=staticCompositionLocalOf{false}
           SettingSwitch("Reduced motion", reduced) { bool("reducedMotion", it, setReduced) }
           SettingsDivider()
           Box(Modifier.clickable { section = "Events" }) { SettingsValue("Event display", "Group by source") }
-          SettingsDivider()
-          Box(Modifier.clickable { section = "Display" }) { SettingsValue("Navigation", "Dock on desk") }
          }
          CompanionPanel("Desk") {
           SettingSwitch("Keep screen awake", awake) { bool("keepAwake", it, setAwake) }
-          SettingsDivider()
-          Box(Modifier.clickable { section = "Display" }) { SettingsValue("Dim after", "${prefs.getInt("ambientDelayMinutes", 5)} min") }
-
          }
          CompanionPanel("Integrations") {
           val sources = LiveRepository.signals.entries.map { it.key to it.value } +
@@ -140,27 +134,10 @@ internal val LocalShowTests=staticCompositionLocalOf{false}
            })
            SettingsDivider()
            SettingSwitch("Keep screen awake",awake){bool("keepAwake",it,setAwake)}
-           SettingsDivider();SettingSwitch("Desk mode",dimMode){bool("deskMode",it,setDimMode)}
-           if (dimMode) {
-            var minutes by remember { mutableIntStateOf(prefs.getInt("ambientDelayMinutes", 5).coerceIn(1, 15)) }
-            SettingsRange("Ambient after", "$minutes min", minutes.toFloat(), 1f..15f, 13) {
-             minutes = it.toInt()
-             prefs.edit().putInt("ambientDelayMinutes", minutes).apply()
-            }
-           }
-           if(dimMode)SettingsRange("App brightness","${(dim*100).toInt()}%",dim,.05f..1f){prefs.edit().putFloat("brightness",it).apply();setDim(it)}
            SettingsDivider();SettingSwitch("Reduce motion",reduced){bool("reducedMotion",it,setReduced)}
           }
          }}
-         @Composable fun navigation(){Column(verticalArrangement=Arrangement.spacedBy(8.dp)){
-          SettingsHeading("Navigation")
-          SettingsGroup{
-           SettingsValue("Desk", "Side rail")
-           SettingsDivider()
-           SettingsValue("Handheld", "Bottom bar")
-          }
-         }}
-         if(wideWindow())Row(horizontalArrangement=Arrangement.spacedBy(14.dp)){Box(Modifier.weight(1f)){screen()};Box(Modifier.weight(1f)){navigation()}}else{screen();navigation()}
+         screen()
         }
         "Home"->{
          SettingsHeading("Android Home screen")

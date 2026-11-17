@@ -43,7 +43,6 @@ data class ServiceWidgetState(val name:String,val kind:String,val fields:Map<Str
 data class HistoryPolicy(val days: Int, val maxRecords: Int, val persistent: Boolean)
 data class SourceDelivery(val name:String,val count:Int,val lastReceived:String)
 
-data class AttentionItem(val title:String,val target:String,val severity:String)
 object LiveRepository {
     var deliveries by mutableStateOf(emptyList<SourceDelivery>());private set
     var deliveryError by mutableStateOf(false);private set
@@ -54,8 +53,6 @@ object LiveRepository {
     var integrations by mutableStateOf(emptyList<ServiceWidgetState>());private set
     var signals by mutableStateOf(mapOf<String,Boolean>());private set
     fun event(e:JSONObject)=LabEvent(e.getString("source"),e.getString("title"),e.optString("detail"),e.optString("kind"),e.getString("id"),e.optString("time"),e.optString("receivedAt"),e.optString("state","Observed"),e.optString("resolvedAt"),e.optString("lastSeen"),e.optString("evidence"),e.optString("resource"),e.optString("namespace"),e.optString("pod"),e.optString("container"),e.optString("node"),e.optString("nodeSource"),e.optJSONObject("labels")?.let{j->j.keys().asSequence().associateWith{j.optString(it)}}?:emptyMap(),e.optString("cpuLimit"),if(e.isNull("throttledPeriodsPercent"))null else e.optDouble("throttledPeriodsPercent").toFloat(),e.optString("nextStep"))
-    private var legacyIssues by mutableStateOf(emptyList<AttentionItem>())
-    val issues:List<AttentionItem> get()=mergeAttention(legacyIssues,active)
     var recentActivity by mutableStateOf<Map<String,Int>?>(null);private set
     var recentActivityWithTests by mutableStateOf<Map<String,Int>?>(null);private set
     var history by mutableStateOf(mapOf<String,List<Float>>());private set
@@ -168,7 +165,7 @@ object LiveRepository {
         val ongoing=root.optJSONArray("active")?:org.json.JSONArray();active=(0 until ongoing.length()).map{event(ongoing.getJSONObject(it))}
         val sources=root.optJSONObject("signals")?:JSONObject();signals=sources.keys().asSequence().filter{!it.startsWith("resource:")}.associateWith{sources.optBoolean(it)}
         val integrationsJSON=root.optJSONArray("integrations")?:org.json.JSONArray();integrations=(0 until integrationsJSON.length()).map{val i=integrationsJSON.getJSONObject(it);val f=i.optJSONObject("fields")?:JSONObject();ServiceWidgetState(i.getString("name"),i.getString("kind"),f.keys().asSequence().associateWith{key->if(f.isNull(key))null else f.optDouble(key).toFloat()},i.optString("time"),i.optString("error"),i.optJSONArray("health")?.let { health -> (0 until health.length()).mapNotNull { index -> health.optJSONObject(index)?.let { item -> ServiceHealth(item.optString("source"),item.optString("type"),item.optString("message"),item.optString("wikiUrl")) } } },i.optJSONArray("queue")?.let { queue -> (0 until queue.length()).mapNotNull { index -> queue.optJSONObject(index)?.let { item -> QueueEntry(item.optString("title"), item.optString("status"), item.optDouble("progress").takeIf { it in 0.0..100.0 }) } } })}
-        val alerts=root.optJSONArray("issues")?:org.json.JSONArray();legacyIssues=(0 until alerts.length()).map{val item=alerts.getJSONObject(it);AttentionItem(item.getString("title"),item.getString("target"),item.getString("severity"))}
+
         backupVolumes=if(root.isNull("backupVolumes"))null else root.optInt("backupVolumes");backupRecorded=if(root.isNull("backupRecorded"))null else root.optInt("backupRecorded");backupLast=root.optString("backupLast")
         download=if(root.isNull("downloadMiB"))null else root.getDouble("downloadMiB").toFloat();backup=if(root.isNull("backupAvailable"))null else root.getBoolean("backupAvailable")
         val checks=root.optJSONArray("monitors")?:org.json.JSONArray();monitors=(0 until checks.length()).map{val m=checks.getJSONObject(it);MonitorState(m.optString("id"),m.optString("name"),m.optString("type"),m.optString("status"),if(m.isNull("responseMs"))null else m.optDouble("responseMs").toFloat(),m.optDouble("uptime24h").toFloat().takeIf { it in 0f..1f })}

@@ -91,7 +91,6 @@ type Snapshot struct {
 	Restarts24h *float64 `json:"restarts24h"`
 	ActionsEnabled bool `json:"actionsEnabled"`
 	Errors                  []string           `json:"errors"`
-	Issues                  []Issue            `json:"issues"`
 	Later []Chore `json:"later"`
 }
 type vector struct {
@@ -317,7 +316,6 @@ func (s *server) snapshot(ctx context.Context) Snapshot {
 		out.BackupRecorded = &recorded
 	}
 	s.enrichApps(ctx, &out)
-	s.attention(ctx, &out)
 	s.chores(ctx, &out)
 	s.collectIncidents(ctx, &out)
 	out.Integrations = s.serviceIntegrations(ctx)

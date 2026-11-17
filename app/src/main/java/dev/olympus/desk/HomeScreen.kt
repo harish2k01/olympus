@@ -83,56 +83,22 @@ private fun stamp(value:String)=try{DateTimeFormatter.ofPattern("dd MMM · HH:mm
  var menu by remember{mutableStateOf(false)}
  var settings by rememberSaveable{mutableStateOf(Pairing.read(context) == null)}
  var message by remember{mutableStateOf("")}
- var dim by remember{mutableFloatStateOf(prefs.getFloat("brightness",.7f))}
  var reducedMotion by remember{mutableStateOf(prefs.getBoolean("reducedMotion",false))}
- var dimMode by remember{mutableStateOf(prefs.getBoolean("deskMode",false))}
- DisposableEffect(prefs) {
-  val listener = android.content.SharedPreferences.OnSharedPreferenceChangeListener { settings, key ->
-   if (key == "deskMode") dimMode = settings.getBoolean(key, false)
-  }
-  prefs.registerOnSharedPreferenceChangeListener(listener)
-  onDispose { prefs.unregisterOnSharedPreferenceChangeListener(listener) }
- }
  var keepAwake by remember{mutableStateOf(prefs.getBoolean("keepAwake",true))}
  var showTests by remember{mutableStateOf(prefs.getBoolean("showTests",false))}
- var dockSeconds by remember{mutableIntStateOf(prefs.getInt("dockSeconds",4))}
- var gridGap by remember{mutableIntStateOf(prefs.getInt("gridGap",10))}
  DisposableEffect(keepAwake){val window=(context as? Activity)?.window;if(keepAwake)window?.addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)else window?.clearFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);onDispose{}}
- var focusMode by remember{mutableStateOf(prefs.getBoolean("focusMode",false))}
- var shift by remember{mutableIntStateOf(0)}
- LaunchedEffect(dimMode){while(dimMode){delay(60000);shift=(shift+1)%3}}
- DisposableEffect(dimMode,dim){val window=(context as? Activity)?.window;val old=window?.attributes?.screenBrightness;window?.attributes=window?.attributes?.apply{screenBrightness=if(dimMode)dim else -1f};onDispose{if(old!=null)window?.attributes=window?.attributes?.apply{screenBrightness=old}}}
  BackHandler(detail.isNotEmpty()){backDetail()}
  CompositionLocalProvider(LocalReducedMotion provides reducedMotion,LocalShowTests provides showTests){
- val deskIdleEnabled = wide && dimMode && !settings && detail.isEmpty() && tab == "Home"
- var ambient by remember { mutableStateOf(false) }
  var lastInteraction by remember { mutableLongStateOf(android.os.SystemClock.elapsedRealtime()) }
- val dockAutoHide = wide && !settings && detail.isEmpty() && !ambient
+ val dockAutoHide = wide && !settings && detail.isEmpty()
  var dockVisible by remember { mutableStateOf(true) }
  var touchInProgress by remember { mutableStateOf(false) }
- LaunchedEffect(dockAutoHide, lastInteraction, touchInProgress, dockSeconds) {
+ LaunchedEffect(dockAutoHide, lastInteraction, touchInProgress) {
   dockVisible = true
   if (dockAutoHide && !touchInProgress) {
-   delay(dockSeconds.coerceAtLeast(1) * 1_000L)
+   delay(4_000L)
    dockVisible = false
   }
- }
- val verdictState = currentVerdict()
- val incidentKeys = verdictState.incidents.map { "${it.id.ifBlank { it.title }}:${it.kind.lowercase()}" }.toSet()
- var previousIncidentKeys by remember { mutableStateOf(incidentKeys) }
- val idleTimeout = prefs.getInt("ambientDelayMinutes", 5).coerceIn(1, 15) * 60_000L
- LaunchedEffect(deskIdleEnabled, lastInteraction, idleTimeout) {
-  ambient = false
-  if (deskIdleEnabled) {
-   delay(idleTimeout)
-   ambient = true
-  }
- }
- LaunchedEffect(incidentKeys) {
-  if (ambient && (incidentKeys - previousIncidentKeys).isNotEmpty()) {
-   lastInteraction = android.os.SystemClock.elapsedRealtime()
-  }
-  previousIncidentKeys = incidentKeys
  }
  if (tab == "Home" && detail.isEmpty() && !settings) {
   GlanceScreen(
@@ -141,10 +107,6 @@ private fun stamp(value:String)=try{DateTimeFormatter.ofPattern("dd MMM · HH:mm
    openIncident = { incident -> tab = "Attention"; selectedEvent = incident; detail = "event:${incident.id}"; detailHistory = arrayListOf() },
    openAttention = { tab = "Attention"; detail = ""; detailHistory = arrayListOf() }
   )
-  return@CompositionLocalProvider
- }
- if (deskIdleEnabled && ambient) {
-  AmbientDesk(verdictState) { lastInteraction = android.os.SystemClock.elapsedRealtime() }
   return@CompositionLocalProvider
  }
  Surface(color=Ink,modifier=Modifier.fillMaxSize().pointerInput(wide) {
@@ -164,7 +126,7 @@ private fun stamp(value:String)=try{DateTimeFormatter.ofPattern("dd MMM · HH:mm
   detail=""
   detailHistory=arrayListOf()
  }
- Column(Modifier.weight(1f).fillMaxHeight().offset(x=if(dimMode)shift.dp else 0.dp)){
+ Column(Modifier.weight(1f).fillMaxHeight()){
  Column(Modifier.weight(1f).fillMaxWidth().padding(horizontal = 14.dp)) {
   if (wide && tab == "Attention" && (detail.isEmpty() || detail.startsWith("event:"))) {
    Spacer(Modifier.height(12.dp))
@@ -228,7 +190,6 @@ private fun stamp(value:String)=try{DateTimeFormatter.ofPattern("dd MMM · HH:mm
      page.startsWith("node:")->NodeDetailScreen(page.substringAfter(":")){target->detailHistory=ArrayList(detailHistory+detail);detail=target}
      page.startsWith("app:")->ApplicationScreen(page.substringAfter(":")){target->detailHistory=ArrayList(detailHistory+detail);detail=target}
      page.startsWith("event:")->EventRoute(page.substringAfter(":"),selectedEvent,{selectedEvent=it}){target->detailHistory=ArrayList(detailHistory+detail);detail=target}
-     page=="Backups"-> {Title("Backups");Info("Destination",when(LiveRepository.backup){true->"Available";false->"Unavailable";null->"Unknown"});Info("Volumes with backup records",if(LiveRepository.backupVolumes==null)"Unavailable"else"${LiveRepository.backupRecorded} / ${LiveRepository.backupVolumes}");Info("Last recorded backup",LiveRepository.backupLast.ifEmpty{"None recorded"})}
      page=="Cluster"->ClusterOverview(
       openHistory = { metric, range -> detail = "cluster-history:$metric@$range" },
       openNode = { detail = "node:$it" }
@@ -287,10 +248,9 @@ private fun stamp(value:String)=try{DateTimeFormatter.ofPattern("dd MMM · HH:mm
  }
  }
  }
- if(settings)SettingsScreen(prefs,dimMode,dim,reducedMotion,keepAwake,showTests,dockSeconds,gridGap,
-  {dimMode=it},{dim=it},{reducedMotion=it},{keepAwake=it},{showTests=it},{dockSeconds=it},{gridGap=it},
-  {settings=false;detail="Monitors"},{_->settings=false
-  },{settings=false},focusMode,{focusMode=it})
+ if(settings)SettingsScreen(prefs,reducedMotion,keepAwake,showTests,
+  {reducedMotion=it},{keepAwake=it},{showTests=it},
+  {settings=false;detail="Monitors"},{settings=false})
 
 }
 
@@ -342,11 +302,9 @@ private fun snapshotAge(): String? {
  }
 }
 
-internal fun welcomeColor():Color = DarkDesk.cobalt
 @Composable internal fun Spark(values:List<Float>,color:Color,percent:Boolean=false){if(values.size<2){Text("Collecting trend…",color=Muted,fontSize=10.sp);return};Canvas(Modifier.fillMaxWidth().height(24.dp)){val low=0f;val range=if(percent)100f else values.max().coerceAtLeast(.1f);val path=Path();values.forEachIndexed{i,value->val x=i.toFloat()/(values.size-1)*size.width;val y=size.height-(value.coerceIn(0f,range)-low)/range*(size.height-4)-2;if(i==0)path.moveTo(x,y)else path.lineTo(x,y)};drawPath(path,color,style=androidx.compose.ui.graphics.drawscope.Stroke(2.dp.toPx()))}}
 
 @Composable private fun Title(value:String){Text(value,color=Paper,fontSize=25.sp,fontWeight=FontWeight.SemiBold,modifier=Modifier.padding(vertical=12.dp))}
-@Composable private fun Info(label:String,value:String){Row(Modifier.fillMaxWidth().padding(vertical=8.dp),horizontalArrangement=Arrangement.spacedBy(16.dp)){Text(label,color=Muted,fontSize=12.sp,modifier=Modifier.weight(1f));Text(value,color=Paper,fontSize=12.sp,modifier=Modifier.weight(1.6f))}}
 @Composable internal fun Usage(label:String,value:Float?,color:Color){Row(Modifier.fillMaxWidth().padding(top=5.dp,bottom=4.dp),horizontalArrangement=Arrangement.SpaceBetween){Text(label,color=Muted,fontSize=12.sp);Text("${value.fmt()}%",color=Paper,fontSize=12.sp)};if(value!=null)LinearProgressIndicator(progress={(value/100).coerceIn(0f,1f)},color=color,trackColor=DeskColors.raised,modifier=Modifier.fillMaxWidth().height(3.dp),drawStopIndicator={})}
 @Composable private fun Nodes(open:(String)->Unit){
  val wide=wideWindow()
