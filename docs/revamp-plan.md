@@ -46,14 +46,22 @@ Design canvas: https://claude.ai/artifact/CCCRNeenwimTcfMFzc8ZVs
 4. Allowlisted actions behind a separate token scope and narrow RBAC: Argo app sync, rollout restart of a deployment, delete a stuck pod. Every action is audit-logged and confirmed on the device.
 5. Pairing: the backend prints a QR code (URL + one-time code) on first start, and the app exchanges the code for a token.
 
-## App work (phases)
+## Status
 
-1. **Glance:** new theme tokens (ground #0A0C0F, surface #13171C, ok #3DD68C, warn #F5A524, crit #FF6B5E, info #6FA8FF; Space Grotesk numerals, Inter text), the all-clear, needs-you and stale states, and the portrait variant. Delete the widget editor.
-2. **Always-on:** night mode schedule, ambient-light dimming, pixel shift every few minutes, wake on critical, keep the foreground service resilient.
-3. **Attention + Detail:** tabs, snooze, suggestions, actions (behind the setting).
-4. **Cluster + Services refresh** using the existing endpoints.
-5. **QR pairing and Settings.**
-6. Device soak: 72 h on the target phone, covering reconnection, night transitions and burn-in shift.
+| Phase | State |
+|---|---|
+| 1. Glance: theme, all-clear / needs-you / stale / portrait, Space Grotesk numerals; widget editor removed | Done (#1, #5, #8) |
+| 2. Always-on: night window (configurable), room-light brightness, pixel shift, wake on critical | Done (#1, #7, #9) |
+| 3. Attention + Detail: Now / Later / Snoozed / History, severity hero, suggestion, action column | Done (#3, #7) |
+| Actions: restart, delete pod, Argo CD sync, all confirmed and audit logged | Done (#1, #9) |
+| Snoozes shared through the backend (SNOOZE_FILE) | Done (#9) |
+| Later chores: certificates, volumes (full and 30-day forecast), Talos releases, Dependabot | Done (#3, #9) |
+| 4. Cluster + Services: node cards with pods, certificates, restarts; slowest-first grid, media counters | Done (#7, #9) |
+| 5. QR pairing and Settings: burn-in, wake, night hours, room light, allow actions | Done (#7, #9) |
+| Dark-only theme (light theme removed) | Done (#9) |
+| 6. Device soak: 72 h on the Redmi Note 7 (reconnection, night transitions, burn-in shift, MIUI) | Not started |
+| Signed release build | Waiting on a signing key |
+| Dependabot chore | Needs GITHUB_OWNER and GITHUB_TOKEN in olympus-auth |
 
 ## Decisions
 

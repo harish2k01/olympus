@@ -119,6 +119,14 @@ func (s *server) volumeChores(ctx context.Context) []Chore {
 		chores = append(chores, Chore{ID: "volume:" + ns + "/" + claim, Kind: "volume",
 			Title: fmt.Sprintf("Volume %s is %.0f%% full", claim, *used*100), Detail: ns + " · expand the claim or clean up"})
 	}
+	growth, err := s.query(ctx, fmt.Sprintf(`predict_linear(kubelet_volume_stats_available_bytes[24h], 30*86400) < 0 and on(namespace,persistentvolumeclaim) (kubelet_volume_stats_used_bytes / kubelet_volume_stats_capacity_bytes) <= %g`, volumeWarningRatio))
+	if err == nil {
+		for _, row := range growth {
+			ns, claim := row.Metric["namespace"], row.Metric["persistentvolumeclaim"]
+			chores = append(chores, Chore{ID: "volume-growth:" + ns + "/" + claim, Kind: "volume",
+				Title: "Volume " + claim + " fills within 30 days", Detail: ns + " · at the last day's growth rate"})
+		}
+	}
 	return chores
 }
 

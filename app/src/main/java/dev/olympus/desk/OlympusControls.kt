@@ -32,13 +32,6 @@ internal val DarkDesk = DeskPalette(
  Color(0xFF2A2010), Color(0xFFF5C26B), Color(0xFF1F262E), Color(0xFFFF6B5E), Color(0xFF232A32), Color(0xFF0A0C0F), Color(0xFFE8EAED)
 )
 
-internal val LightDesk = DeskPalette(
- Color(0xFFF3F5F9), Color.White, Color(0xFFE6EBF3),
- Color(0xFF14181F), Color(0xFF4F5B6C), Color(0xFF1F5FA6),
- Color(0xFF1F5FA6), Color(0xFF5A4B8A), Color(0xFFA35C00), Color(0xFF285F4B),
- Color(0xFFFFE2BD), Color(0xFF4A2E00), Color(0xFFD3E3FA), Color(0xFFB3261E), Color(0xFFD5DCE8), Color.White, Color(0xFF0F3A6B)
-)
-
 internal val LocalDeskPalette = staticCompositionLocalOf { DarkDesk }
 internal val DeskColors: DeskPalette @Composable get() = LocalDeskPalette.current
 @Composable internal fun DeskAction(label:String,primary:Boolean=false,enabled:Boolean=true,click:()->Unit){

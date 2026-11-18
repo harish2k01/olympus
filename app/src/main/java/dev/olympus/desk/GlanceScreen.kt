@@ -201,13 +201,15 @@ internal fun GlanceScreen(wide: Boolean, nightEnabled: Boolean, openIncident: (L
     val prefs = androidx.compose.ui.platform.LocalContext.current.getSharedPreferences("home-v3", 0)
     val shift = if (prefs.getBoolean("burnIn", true)) ((now.minute % 5) - 2).dp else 0.dp
     val wakeOnCritical = prefs.getBoolean("wakeOnCritical", true)
-    val night = nightEnabled && isNightHour(now.hour) && !(wakeOnCritical && state.verdict == Verdict.Critical)
+    val night = nightEnabled && isNightHour(now.hour, prefs.getInt("nightStart", 23), prefs.getInt("nightEnd", 7)) && !(wakeOnCritical && state.verdict == Verdict.Critical)
     val instant = now.toInstant()
     val activity = androidx.activity.compose.LocalActivity.current
     // At night the panel drops to near-minimum backlight; a critical incident ends night mode and restores it.
-    DisposableEffect(night, activity) {
+    val roomLux = if (prefs.getBoolean("followRoomLight", true) && !night) rememberRoomLux() else null
+    val brightness = if (night) 0.01f else roomLux?.let(::brightnessForLux) ?: -1f
+    DisposableEffect(brightness, activity) {
         val window = activity?.window
-        window?.attributes = window?.attributes?.apply { screenBrightness = if (night) 0.01f else -1f }
+        window?.attributes = window?.attributes?.apply { screenBrightness = brightness }
         onDispose { window?.attributes = window?.attributes?.apply { screenBrightness = -1f } }
     }
     if (night) {
@@ -259,6 +261,11 @@ internal fun GlanceScreen(wide: Boolean, nightEnabled: Boolean, openIncident: (L
         Column(modifier, verticalArrangement = Arrangement.spacedBy(12.dp)) {
             state.incidents.take(max).forEach { IncidentCard(it, ageLabel(it, instant), state.incidents.size <= 2) { openIncident(it) } }
             if (state.incidents.size > max) Text("+ ${state.incidents.size - max} more", color = Glance.muted, fontSize = 15.sp)
+            val later = LiveRepository.later
+            if (later.isNotEmpty()) Row(Modifier.padding(horizontal = 6.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text("Later", color = Color(0xFFC4CAD1), fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+                Text(later.take(2).joinToString(" · ") { it.title }, color = Glance.muted, fontSize = 15.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
         }
     }
 
@@ -322,4 +329,33 @@ private fun NightGlance(now: ZonedDateTime, state: VerdictState, modifier: Modif
             }
         }
     }
+}
+
+/** Backlight for the room: dim in a dark room, system auto in a bright one. */
+internal fun brightnessForLux(lux: Float): Float = when {
+    lux < 5f -> 0.04f
+    lux < 50f -> 0.15f
+    lux < 300f -> 0.4f
+    else -> -1f
+}
+
+/** Ambient light in lux from the phone's light sensor, smoothed; null when the phone has none. */
+@Composable
+private fun rememberRoomLux(): Float? {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    var lux by remember { mutableStateOf<Float?>(null) }
+    DisposableEffect(context) {
+        val manager = context.getSystemService(android.content.Context.SENSOR_SERVICE) as android.hardware.SensorManager
+        val sensor = manager.getDefaultSensor(android.hardware.Sensor.TYPE_LIGHT)
+        val listener = object : android.hardware.SensorEventListener {
+            override fun onSensorChanged(event: android.hardware.SensorEvent) {
+                val reading = event.values[0]
+                lux = lux?.let { it * 0.8f + reading * 0.2f } ?: reading
+            }
+            override fun onAccuracyChanged(sensor: android.hardware.Sensor?, accuracy: Int) {}
+        }
+        if (sensor != null) manager.registerListener(listener, sensor, android.hardware.SensorManager.SENSOR_DELAY_NORMAL)
+        onDispose { manager.unregisterListener(listener) }
+    }
+    return lux
 }

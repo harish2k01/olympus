@@ -25,6 +25,9 @@ type actionPolicy struct {
 
 var protectedNamespaces = map[string]bool{"kube-system": true, "kube-public": true, "kube-node-lease": true, "olympus": true, "argocd": true}
 var dnsLabel = regexp.MustCompile(`^[a-z0-9]([-a-z0-9]{0,61}[a-z0-9])?$`)
+var objectName = regexp.MustCompile(`^[a-z0-9]([-a-z0-9.]*[a-z0-9])?$`)
+
+func validObjectName(name string) bool { return len(name) <= 253 && objectName.MatchString(name) }
 
 const actionCooldown = time.Minute
 
@@ -82,7 +85,7 @@ func (s *server) restartAction(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	resource, kindOK := restartKinds[strings.ToLower(req.Kind)]
-	if !kindOK || !dnsLabel.MatchString(req.Namespace) || len(req.Name) > 253 || !regexp.MustCompile(`^[a-z0-9]([-a-z0-9.]*[a-z0-9])?$`).MatchString(req.Name) {
+	if !kindOK || !dnsLabel.MatchString(req.Namespace) || !validObjectName(req.Name) {
 		write(w, 400, map[string]string{"error": "Invalid target"})
 		return
 	}

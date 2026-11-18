@@ -132,7 +132,7 @@ private fun ClusterNodes(open: (String) -> Unit) {
 private fun ClusterChores() {
  val chores = LiveRepository.later.filter { it.kind in setOf("certificate", "volume", "upgrade") }
  val restarts = LiveRepository.restarts24h
- if (chores.isEmpty() && restarts == null) return
+ if (chores.isEmpty() && restarts == null && LiveRepository.certificates == null) return
  Row(Modifier.fillMaxWidth().padding(bottom = 10.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
   if (restarts != null) Column(Modifier.weight(1f).clip(RoundedCornerShape(16.dp)).background(DeskColors.surface).padding(14.dp)) {
    Text("Restarts · 24 h", color = DeskColors.muted, fontSize = 13.sp)
@@ -140,6 +140,7 @@ private fun ClusterChores() {
   }
   Column(Modifier.weight(2f).clip(RoundedCornerShape(16.dp)).background(DeskColors.surface).padding(14.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
    Text("Later", color = DeskColors.muted, fontSize = 13.sp)
+   LiveRepository.certificates?.let { c -> Text(certificateLine(c), color = DeskColors.text, fontSize = 15.sp, maxLines = 1) }
    if (chores.isEmpty()) Text("Certificates, volumes and Talos are up to date", color = DeskColors.text, fontSize = 15.sp)
    chores.take(3).forEach { Text(it.title, color = DeskColors.text, fontSize = 15.sp, maxLines = 1) }
    if (chores.size > 3) Text("+ ${chores.size - 3} more in Attention", color = DeskColors.muted, fontSize = 13.sp)
@@ -175,8 +176,19 @@ private fun ClusterNodeCards(openNode: (String) -> Unit) {
     }
     bar("CPU", cpu)
     bar("Memory", memory)
-    Text(if (node.ready) "${node.cores} cores · ${node.role}" else "Not ready", color = if (node.ready) DeskColors.muted else Glance.crit, fontSize = 12.sp)
+    Text(if (node.ready) listOfNotNull(node.pods?.let { "$it pods" }, "${node.cores} cores").joinToString(" · ") else "Not ready", color = if (node.ready) DeskColors.muted else Glance.crit, fontSize = 12.sp)
    }
   }
  }
+}
+
+/** "12 certificates · next renews in 9 days (wildcard-lab)". */
+internal fun certificateLine(c: dev.olympus.desk.data.CertificateSummary, now: java.time.Instant = java.time.Instant.now()): String {
+ val days = runCatching { java.time.Duration.between(now, java.time.Instant.parse(c.nextExpiry)).toDays() }.getOrNull()
+ val next = when {
+  days == null -> ""
+  days < 0 -> " · ${c.nextName} has expired"
+  else -> " · next renews in $days days" + if (c.nextName.isNotBlank()) " (${c.nextName})" else ""
+ }
+ return "${c.total} certificate${if (c.total == 1) "" else "s"}$next"
 }
