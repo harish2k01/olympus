@@ -97,13 +97,27 @@ internal val LocalShowTests=staticCompositionLocalOf{false}
          }
          CompanionPanel("Glance") {
           var night by remember { mutableStateOf(prefs.getBoolean("nightMode", true)) }
-          SettingSwitch("Night mode 23:00–07:00", night) { night = it; prefs.edit().putBoolean("nightMode", it).apply() }
+          var nightStart by remember { mutableIntStateOf(prefs.getInt("nightStart", 23)) }
+          var nightEnd by remember { mutableIntStateOf(prefs.getInt("nightEnd", 7)) }
+          SettingSwitch("Night mode %02d:00–%02d:00".format(nightStart, nightEnd), night) { night = it; prefs.edit().putBoolean("nightMode", it).apply() }
+          if (night) {
+           SettingsRange("Night starts", "%02d:00".format(nightStart), nightStart.toFloat(), 18f..23f, 4) { nightStart = it.toInt(); prefs.edit().putInt("nightStart", nightStart).apply() }
+           SettingsRange("Night ends", "%02d:00".format(nightEnd), nightEnd.toFloat(), 4f..10f, 5) { nightEnd = it.toInt(); prefs.edit().putInt("nightEnd", nightEnd).apply() }
+          }
+          SettingsDivider()
+          var roomLight by remember { mutableStateOf(prefs.getBoolean("followRoomLight", true)) }
+          SettingSwitch("Brightness follows room light", roomLight) { roomLight = it; prefs.edit().putBoolean("followRoomLight", it).apply() }
           SettingsDivider()
           var burnIn by remember { mutableStateOf(prefs.getBoolean("burnIn", true)) }
           SettingSwitch("Burn-in protection", burnIn) { burnIn = it; prefs.edit().putBoolean("burnIn", it).apply() }
           SettingsDivider()
           var wake by remember { mutableStateOf(prefs.getBoolean("wakeOnCritical", true)) }
           SettingSwitch("Wake bright on critical", wake) { wake = it; prefs.edit().putBoolean("wakeOnCritical", it).apply() }
+          if (LiveRepository.actionsEnabled) {
+           SettingsDivider()
+           var allow by remember { mutableStateOf(prefs.getBoolean("allowActions", true)) }
+           SettingSwitch("Allow actions from this screen", allow) { allow = it; prefs.edit().putBoolean("allowActions", it).apply() }
+          }
           SettingsDivider()
           SettingsAction("Android Home screen widget") { section = "Home" }
          }
@@ -132,13 +146,6 @@ internal val LocalShowTests=staticCompositionLocalOf{false}
          @Composable fun screen(){Column(verticalArrangement=Arrangement.spacedBy(8.dp)){
           SettingsHeading("Screen")
           SettingsGroup{
-           var appearance by remember { mutableStateOf(prefs.getString("appearance", "Dark") ?: "Dark") }
-           SettingsValue("Appearance", appearance)
-           DeskSegments(listOf("Dark", "Light", "System"), appearance, { option ->
-            appearance = option
-            prefs.edit().putString("appearance", option).apply()
-           })
-           SettingsDivider()
            SettingSwitch("Keep screen awake",awake){bool("keepAwake",it,setAwake)}
            SettingsDivider();SettingSwitch("Reduce motion",reduced){bool("reducedMotion",it,setReduced)}
           }

@@ -22,7 +22,6 @@ import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.collectLatest
 import androidx.compose.runtime.*
-import androidx.compose.foundation.isSystemInDarkTheme
 
 
 
@@ -102,18 +101,9 @@ class MainActivity:ComponentActivity(){
             }
         }
         setContent {
-            val settings = remember { getSharedPreferences("home-v3", MODE_PRIVATE) }
-            var appearance by remember { mutableStateOf(settings.getString("appearance", "Dark")) }
-            DisposableEffect(settings) {
-                val listener = android.content.SharedPreferences.OnSharedPreferenceChangeListener { prefs, key ->
-                    if (key == "appearance") appearance = prefs.getString(key, "Dark")
-                }
-                settings.registerOnSharedPreferenceChangeListener(listener)
-                onDispose { settings.unregisterOnSharedPreferenceChangeListener(listener) }
-            }
-            val light = appearance == "Light" || (appearance == "System" && !isSystemInDarkTheme())
-            val palette = if (light) LightDesk else DarkDesk
-            val base = if (light) lightColorScheme() else darkColorScheme()
+            // Olympus is an always-on display: one dark theme, tuned with the glance.
+            val palette = DarkDesk
+            val base = darkColorScheme()
             MaterialTheme(
                 colorScheme = base.copy(primary = palette.blue, background = palette.background, surface = palette.surface,
                     onSurface = palette.text, onBackground = palette.text, onPrimary = palette.onPrimary,

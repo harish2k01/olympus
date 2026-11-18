@@ -46,6 +46,8 @@ func TestChoresFromPrometheus(t *testing.T) {
 	prom := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		q := r.URL.Query().Get("query")
 		switch {
+		case strings.Contains(q, "predict_linear"):
+			w.Write([]byte(`{"status":"success","data":{"result":[{"metric":{"namespace":"media","persistentvolumeclaim":"immich-library"},"value":[0,"-1"]}]}}`))
 		case strings.Contains(q, "certmanager"):
 			w.Write([]byte(`{"status":"success","data":{"result":[{"metric":{"name":"wildcard-lab","namespace":"gateway"},"value":[0,"777600"]}]}}`))
 		case strings.Contains(q, "kubelet_volume_stats"):
@@ -58,7 +60,7 @@ func TestChoresFromPrometheus(t *testing.T) {
 	s := &server{client: prom.Client(), prom: prom.URL}
 	var out Snapshot
 	s.chores(context.Background(), &out)
-	if len(out.Later) != 2 {
+	if len(out.Later) != 3 {
 		t.Fatal(out.Later)
 	}
 	if out.Later[0].Kind != "certificate" || out.Later[0].Title != "Certificate wildcard-lab renews in 9 days" {
@@ -66,5 +68,8 @@ func TestChoresFromPrometheus(t *testing.T) {
 	}
 	if out.Later[1].Title != "Volume jellyfin-config is 86% full" {
 		t.Fatal(out.Later[1])
+	}
+	if out.Later[2].Title != "Volume immich-library fills within 30 days" {
+		t.Fatal(out.Later[2])
 	}
 }

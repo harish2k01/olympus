@@ -49,7 +49,7 @@ roleRef:
   name: olympus-readonly
   apiGroup: rbac.authorization.k8s.io
 ---
-# Rollout restarts from the Olympus app. The backend also requires ACTIONS_ENABLED=true and
+# Restart, delete-pod and Argo CD sync from the Olympus app. The backend also requires ACTIONS_ENABLED=true and
 # refuses kube-system, kube-public, kube-node-lease, olympus and argocd regardless of this role.
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
@@ -58,6 +58,12 @@ metadata:
 rules:
   - apiGroups: [apps]
     resources: [deployments, statefulsets, daemonsets]
+    verbs: [patch]
+  - apiGroups: [""]
+    resources: [pods]
+    verbs: [delete]
+  - apiGroups: [argoproj.io]
+    resources: [applications]
     verbs: [patch]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
@@ -105,6 +111,7 @@ spec:
             - {name: ARGOCD_URL, value: "https://argocd.k8s.harish2k01.xyz"}
             - {name: GRAFANA_URL, value: "https://grafana.k8s.harish2k01.xyz"}
             - {name: ACTIONS_ENABLED, value: "true"}
+            - {name: SNOOZE_FILE, value: /data/snoozes.json}
           volumeMounts:
             - {name: history, mountPath: /data}
           resources:

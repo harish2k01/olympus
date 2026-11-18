@@ -28,6 +28,7 @@ type Node struct {
 	Used     *float64 `json:"memoryUsedGiB"`
 	Total    *float64 `json:"memoryTotalGiB"`
 	Ready    bool     `json:"ready"`
+	Pods     *int     `json:"pods"`
  Readiness string `json:"readiness,omitempty"`
 	Pressure []string `json:"pressure"`
 }
@@ -92,6 +93,8 @@ type Snapshot struct {
 	ActionsEnabled bool `json:"actionsEnabled"`
 	Errors                  []string           `json:"errors"`
 	Later []Chore `json:"later"`
+	Certificates *CertificateSummary `json:"certificates,omitempty"`
+	Snoozes map[string]string `json:"snoozes"`
 }
 type vector struct {
 	Metric map[string]string `json:"metric"`
@@ -101,6 +104,7 @@ type server struct {
  pairing pairingCodes
  actions *actionPolicy
  external externalCache
+ snoozes snoozeStore
  metricCache map[string]metricCacheEntry
 	client                                  *http.Client
 	kube                                    *http.Client
@@ -317,6 +321,7 @@ func (s *server) snapshot(ctx context.Context) Snapshot {
 	}
 	s.enrichApps(ctx, &out)
 	s.chores(ctx, &out)
+	s.clusterExtras(ctx, &out)
 	s.collectIncidents(ctx, &out)
 	out.Integrations = s.serviceIntegrations(ctx)
 	s.cached = out
@@ -531,6 +536,7 @@ func main() {
 	s := &server{client: &http.Client{Timeout: 8 * time.Second}, kube: &http.Client{Timeout: 8 * time.Second, Transport: &http.Transport{TLSClientConfig: &tls.Config{RootCAs: pool, MinVersion: tls.VersionTLS12}}}, prom: env("PROMETHEUS_URL", "http://kube-prometheus-stack-prometheus.monitoring.svc:9090"), kubeURL: env("KUBE_URL", "https://kubernetes.default.svc"), sa: strings.TrimSpace(string(sa)), token: token, hook: hook, events: []Event{}, wake: make(chan struct{}, 1), history: os.Getenv("HISTORY_FILE")}
 	s.actions = loadActionPolicy(os.Getenv("ACTIONS_ENABLED"), os.Getenv("ACTION_NAMESPACES"))
 	s.loadHistory()
+	s.snoozes.load(os.Getenv("SNOOZE_FILE"))
 	s.loadIntegrations()
 	s.live.changed = make(chan struct{})
 	go s.run(context.Background())
@@ -543,6 +549,9 @@ func main() {
  mux.HandleFunc("/v1/pairing/code", s.issuePairingCode)
  mux.HandleFunc("/v1/pairing/exchange", s.exchangePairingCode)
  mux.HandleFunc("/v1/actions/restart", s.restartAction)
+ mux.HandleFunc("/v1/actions/delete-pod", s.deletePodAction)
+ mux.HandleFunc("/v1/actions/sync", s.syncAction)
+ mux.HandleFunc("/v1/snoozes", s.snoozeEndpoint)
 	mux.HandleFunc("/v1/", s.api)
 	mux.HandleFunc("/hooks/", s.webhook)
 	slog.Info("server_started", "port", 8080, "history_enabled", s.history != "")

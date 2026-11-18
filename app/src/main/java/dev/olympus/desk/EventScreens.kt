@@ -189,9 +189,9 @@ private fun groupingKey(e: LabEvent) =
   val description = data?.optString("message").orEmpty().ifBlank { data?.optString("description").orEmpty() }
   if (description.isNotBlank() && description != event.title) Text(description, color = heroInk, fontSize = 14.sp)
   if (event.nextStep.isNotBlank()) Text("Suggested: ${event.nextStep}", color = heroInk, fontSize = 14.sp)
-  if (!wideHero) IncidentActions(event)
+  if (!wideHero) IncidentActions(event, open = open)
  }
- if (wideHero) Column(Modifier.width(220.dp)) { IncidentActions(event, vertical = true) }
+ if (wideHero) Column(Modifier.width(220.dp)) { IncidentActions(event, vertical = true, open = open) }
  }
  val resource = listOf(event.namespace, event.pod).filter(String::isNotBlank).joinToString(" / ").ifBlank { event.resource }
  if (resource.isNotBlank() || event.node.isNotBlank()) Row(
@@ -242,7 +242,7 @@ private fun groupingKey(e: LabEvent) =
   }
  }
  Row(Modifier.fillMaxWidth().padding(vertical=6.dp).horizontalScroll(rememberScrollState()),horizontalArrangement=Arrangement.spacedBy(8.dp)){
-  if(event.pod.isNotBlank()&&event.namespace.isNotBlank())DeskAction("Inspect workload",true){open("pod:${event.namespace}/${event.pod}@${event.node}")}
+  if(!firing&&event.pod.isNotBlank()&&event.namespace.isNotBlank())DeskAction("Inspect workload",true){open("pod:${event.namespace}/${event.pod}@${event.node}")}
   if(event.node.isNotBlank())DeskAction("Node · ${event.node}"){open("node:${event.node}")}
   if(app!=null)DeskAction("Application"){open("app:${app.name}")}
  }
