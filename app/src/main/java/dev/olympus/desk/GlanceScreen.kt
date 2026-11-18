@@ -35,6 +35,14 @@ import java.time.ZonedDateTime
 import java.time.format.DateTimeFormatter
 
 /** Glance palette: always dark, tuned for an always-on panel read from a distance. */
+@OptIn(androidx.compose.ui.text.ExperimentalTextApi::class)
+internal val SpaceGrotesk = androidx.compose.ui.text.font.FontFamily(
+    listOf(400, 500, 600, 700).map { w ->
+        androidx.compose.ui.text.font.Font(R.font.space_grotesk, FontWeight(w),
+            variationSettings = androidx.compose.ui.text.font.FontVariation.Settings(androidx.compose.ui.text.font.FontVariation.weight(w)))
+    }
+)
+
 internal object Glance {
     val ground = Color(0xFF0A0C0F)
     val surface = Color(0xFF13171C)
@@ -127,7 +135,7 @@ private fun Vital(label: String, value: String, of: String?, stale: Boolean, mod
         Text(buildAnnotatedString {
             append(value)
             if (of != null) withStyle(SpanStyle(color = Glance.faint)) { append("/$of") }
-        }, color = if (stale) Glance.muted else Glance.text, fontSize = 38.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
+        }, color = if (stale) Glance.muted else Glance.text, fontFamily = SpaceGrotesk, fontSize = 38.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
     }
 }
 
@@ -146,12 +154,12 @@ private fun IncidentCard(event: LabEvent, age: String, large: Boolean, open: () 
     ) {
         SeverityDot(critical)
         Column(Modifier.weight(1f)) {
-            Text(incidentTitle(event), color = Glance.text, fontSize = if (large) 24.sp else 20.sp,
+            Text(incidentTitle(event), color = Glance.text, fontFamily = SpaceGrotesk, fontSize = if (large) 24.sp else 20.sp,
                 fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
             if (sub.isNotBlank()) Text(sub, color = if (critical) Color(0xFFE6B3AD) else Color(0xFFE3C79A),
                 fontSize = 15.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
-        if (age.isNotBlank()) Text(age, color = if (critical) Color(0xFFFFB3AB) else Glance.warnText, fontSize = 22.sp)
+        if (age.isNotBlank()) Text(age, color = if (critical) Color(0xFFFFB3AB) else Glance.warnText, fontFamily = SpaceGrotesk, fontSize = 22.sp)
     }
 }
 
@@ -226,7 +234,7 @@ internal fun GlanceScreen(wide: Boolean, nightEnabled: Boolean, openIncident: (L
             modifier = Modifier.semantics(mergeDescendants = true) {}) {
             GlanceMark(state.verdict, markSize)
             Column {
-                Text(glanceHeadline(state), color = glanceAccent(state.verdict), fontSize = headSize, fontWeight = FontWeight.Bold, lineHeight = headSize)
+                Text(glanceHeadline(state), color = glanceAccent(state.verdict), fontFamily = SpaceGrotesk, fontSize = headSize, fontWeight = FontWeight.Bold, lineHeight = headSize)
                 Text(sub, color = Glance.muted, fontSize = 15.sp)
             }
         }
@@ -280,7 +288,7 @@ internal fun GlanceScreen(wide: Boolean, nightEnabled: Boolean, openIncident: (L
                 val calm = state.incidents.isEmpty()
                 Column(Modifier.width(if (calm) 370.dp else 300.dp).fillMaxHeight(), verticalArrangement = Arrangement.SpaceBetween) {
                     Column {
-                        Text(clock, color = Glance.text, fontSize = if (calm) 104.sp else 80.sp, lineHeight = if (calm) 100.sp else 78.sp, fontWeight = FontWeight.SemiBold)
+                        Text(clock, color = Glance.text, fontFamily = SpaceGrotesk, fontSize = if (calm) 104.sp else 80.sp, lineHeight = if (calm) 100.sp else 78.sp, fontWeight = FontWeight.SemiBold)
                         Text(date, color = Glance.muted, fontSize = 19.sp)
                     }
                     Verdict(if (calm) 52.dp else 46.dp, if (calm) 44.sp else 40.sp)
@@ -290,7 +298,7 @@ internal fun GlanceScreen(wide: Boolean, nightEnabled: Boolean, openIncident: (L
         } else {
             Column(Modifier.weight(1f).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(24.dp)) {
                 Column {
-                    Text(clock, color = Glance.text, fontSize = 92.sp, lineHeight = 90.sp, fontWeight = FontWeight.SemiBold)
+                    Text(clock, color = Glance.text, fontFamily = SpaceGrotesk, fontSize = 92.sp, lineHeight = 90.sp, fontWeight = FontWeight.SemiBold)
                     Text(date, color = Glance.muted, fontSize = 18.sp)
                 }
                 Verdict(44.dp, 38.sp)
@@ -307,7 +315,7 @@ internal fun GlanceScreen(wide: Boolean, nightEnabled: Boolean, openIncident: (L
 private fun NightGlance(now: ZonedDateTime, state: VerdictState, modifier: Modifier, wake: () -> Unit) {
     Box(Modifier.fillMaxSize().background(Color.Black).clickable(role = Role.Button, onClickLabel = "Open attention list", onClick = wake)) {
         Column(modifier.align(Alignment.Center), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(16.dp)) {
-            Text(now.format(DateTimeFormatter.ofPattern("HH:mm")), color = Glance.night, fontSize = 116.sp, lineHeight = 116.sp, fontWeight = FontWeight.Medium)
+            Text(now.format(DateTimeFormatter.ofPattern("HH:mm")), color = Glance.night, fontFamily = SpaceGrotesk, fontSize = 116.sp, lineHeight = 116.sp, fontWeight = FontWeight.Medium)
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 GlanceMark(state.verdict, 14.dp)
                 Text(glanceHeadline(state), color = Glance.night, fontSize = 18.sp)

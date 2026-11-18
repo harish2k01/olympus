@@ -61,7 +61,7 @@ internal fun ServicesSummary() {
             cards.forEach { (label, value, sub) ->
                 Column(Modifier.weight(1f).clip(RoundedCornerShape(14.dp)).background(DeskColors.surface).padding(14.dp)) {
                     Text(label, color = DeskColors.muted, fontSize = 13.sp)
-                    Text(value, color = DeskColors.text, fontSize = 28.sp, fontWeight = FontWeight.SemiBold)
+                    Text(value, color = DeskColors.text, fontFamily = SpaceGrotesk, fontSize = 28.sp, fontWeight = FontWeight.SemiBold)
                     Text(sub, color = DeskColors.muted, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
             }
