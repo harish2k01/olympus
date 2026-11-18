@@ -136,7 +136,7 @@ private fun ClusterChores() {
  Row(Modifier.fillMaxWidth().padding(bottom = 10.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
   if (restarts != null) Column(Modifier.weight(1f).clip(RoundedCornerShape(16.dp)).background(DeskColors.surface).padding(14.dp)) {
    Text("Restarts · 24 h", color = DeskColors.muted, fontSize = 13.sp)
-   Text(restarts.toString(), color = DeskColors.text, fontSize = 26.sp, fontWeight = FontWeight.SemiBold)
+   Text(restarts.toString(), color = DeskColors.text, fontFamily = SpaceGrotesk, fontSize = 26.sp, fontWeight = FontWeight.SemiBold)
   }
   Column(Modifier.weight(2f).clip(RoundedCornerShape(16.dp)).background(DeskColors.surface).padding(14.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
    Text("Later", color = DeskColors.muted, fontSize = 13.sp)
